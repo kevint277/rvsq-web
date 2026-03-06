@@ -1,17 +1,89 @@
-# RVSQ Bot Web - Guide rapide
+import express from "express";
+import cors from "cors";
+import { runtime, db, addHistory, saveProfile } from "./store.js";
 
-## Contenu
-- `frontend/` : interface web statique à héberger sur GitHub Pages ou Netlify
-- `backend/` : serveur Node.js à héberger sur Render
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-## Déploiement rapide
-1. Crée un dépôt GitHub.
-2. Dépose le contenu du zip dans ce dépôt.
-3. Déploie `backend/` sur Render comme Web Service.
-4. Récupère l'URL Render, par exemple `https://mon-backend.onrender.com`.
-5. Ouvre `frontend/index.html` et remplace `http://localhost:3000` par ton URL Render si tu veux une valeur par défaut.
-6. Déploie `frontend/` sur GitHub Pages ou Netlify.
-7. Ouvre le site et utilise l'interface.
+function statusText() {
+  if (runtime.running && runtime.paused) return "En pause";
+  if (runtime.running) return "En cours";
+  if (runtime.lastAction === "Arrêté") return "Arrêté";
+  return "Prêt";
+}
 
-## Important
-Cette base fournit l'architecture et un moteur simulé.
+app.get("/", (req, res) => {
+  res.json({ ok: true, message: "Backend RVSQ V2 prêt" });
+});
+
+app.get("/status", (req, res) => {
+  res.json({
+    status: statusText(),
+    state: {
+      ...runtime,
+      historyCount: db.history.length,
+      profileCount: db.profiles.size
+    }
+  });
+});
+
+app.get("/history", (req, res) => {
+  res.json({ items: db.history });
+});
+
+app.post("/profiles/save", (req, res) => {
+  const profile = req.body?.profile || {};
+  const id = saveProfile(profile);
+  res.json({ ok: true, profileId: id, message: "Profil sauvegardé" });
+});
+
+app.get("/profiles", (req, res) => {
+  res.json({ items: Array.from(db.profiles.values()) });
+});
+
+app.post("/start", (req, res) => {
+  const profile = req.body?.profile || {};
+  const profileId = saveProfile(profile);
+  runtime.running = true;
+  runtime.paused = false;
+  runtime.startedAt = new Date().toISOString();
+  runtime.lastAction = "Démarré";
+  runtime.profileId = profileId;
+  db.sessions.push({ startedAt: runtime.startedAt, profileId });
+  addHistory("info", "Démarrage du bot", { profileId });
+  res.json({
+    status: "Démarré",
+    note: "Backend V2 branché. Le vrai moteur d'automatisation reste à connecter.",
+    state: runtime
+  });
+});
+
+app.post("/pause", (req, res) => {
+  runtime.paused = true;
+  runtime.lastAction = "En pause";
+  addHistory("info", "Bot mis en pause");
+  res.json({ status: "En pause", note: "Pause enregistrée.", state: runtime });
+});
+
+app.post("/resume", (req, res) => {
+  runtime.running = true;
+  runtime.paused = false;
+  runtime.lastAction = "Repris";
+  addHistory("info", "Bot repris");
+  res.json({ status: "Repris", note: "Reprise enregistrée.", state: runtime });
+});
+
+app.post("/stop", (req, res) => {
+  runtime.running = false;
+  runtime.paused = false;
+  runtime.lastAction = "Arrêté";
+  addHistory("info", "Bot arrêté");
+  res.json({ status: "Arrêté", note: "Arrêt enregistré.", state: runtime });
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  addHistory("info", "Backend démarré", { port });
+  console.log(`Backend RVSQ V2 en écoute sur le port ${port}`);
+});
