@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RVSQ Bot Web</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background:#f6f7fb; color:#1b1f2a; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
+    .card { background:#fff; border-radius:16px; padding:20px; box-shadow:0 6px 24px rgba(0,0,0,.08); margin-bottom:16px; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    label { display:block; font-size:14px; margin-bottom:6px; color:#4c566a; }
+    input, select { width:100%; padding:10px 12px; border:1px solid #d7dce5; border-radius:10px; box-sizing:border-box; }
+    button { padding:10px 14px; border:none; border-radius:10px; cursor:pointer; margin-right:8px; margin-bottom:8px; }
+    .primary { background:#2563eb; color:white; }
+    .secondary { background:#e5e7eb; }
+    .danger { background:#dc2626; color:white; }
+    pre { white-space:pre-wrap; background:#0f172a; color:#e2e8f0; padding:12px; border-radius:12px; min-height:120px; }
+    .muted { color:#64748b; font-size:14px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>RVSQ Bot Web</h1>
+    <p class="muted">Base web partageable. Profil local, options, historique et vue avancée.</p>
+  </div>
+
+  <div class="card">
+    <h2>Profil</h2>
+    <div class="row">
+      <div><label>Prénom</label><input id="firstName"></div>
+      <div><label>Nom</label><input id="lastName"></div>
+      <div><label>NAM</label><input id="nam"></div>
+      <div><label>Séquence</label><input id="seq"></div>
+      <div><label>Date de naissance</label><input id="birthDate" placeholder="AAAA-MM-JJ"></div>
+      <div><label>Sexe</label><select id="gender"><option value="M">Homme</option><option value="F">Femme</option></select></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Options</h2>
+    <div class="row">
+      <div><label>Vue avancée</label><select id="advanced"><option value="false">Non</option><option value="true">Oui</option></select></div>
+      <div><label>Afficher l'historique récent</label><select id="showHistory"><option value="true">Oui</option><option value="false">Non</option></select></div>
+      <div><label>Heures critiques</label><select id="critical"><option value="false">Non</option><option value="true">Oui</option></select></div>
+      <div><label>Durée de la plage critique (minutes)</label><input id="criticalMinutes" type="number" value="5"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <button class="primary" onclick="saveProfile()">Enregistrer</button>
+    <button class="secondary" onclick="startBot()">Démarrer</button>
+    <button class="secondary" onclick="pauseBot()">Pause</button>
+    <button class="secondary" onclick="resumeBot()">Reprendre</button>
+    <button class="danger" onclick="stopBot()">Stop</button>
+  </div>
+
+  <div class="card">
+    <h2>État</h2>
+    <div id="status">Prêt</div>
+  </div>
+
+  <div class="card" id="historyCard">
+    <h2>Historique récent</h2>
+    <ul id="history"></ul>
+  </div>
+
+  <div class="card" id="debugCard" style="display:none">
+    <h2>Vue avancée</h2>
+    <pre id="log"></pre>
+  </div>
+</div>
+
+<script>
+const DEFAULT_API = "http://localhost:3000";
+const ids = ["firstName","lastName","nam","seq","birthDate","gender","advanced","showHistory","critical","criticalMinutes"];
+
+function apiBase() {
+  const stored = localStorage.getItem("apiBase");
+  return stored && stored.trim() ? stored.trim() : DEFAULT_API;
+}
+
+function loadProfile(){
+  const p = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
+  ids.forEach(id => { if (p[id] != null) document.getElementById(id).value = p[id]; });
+  renderPrefs();
+}
+
+function renderPrefs(){
+  const advanced = document.getElementById("advanced").value === "true";
+  const showHistory = document.getElementById("showHistory").value === "true";
+  document.getElementById("debugCard").style.display = advanced ? "block" : "none";
+  document.getElementById("historyCard").style.display = showHistory ? "block" : "none";
+}
+
+function saveProfile(){
+  const p = {};
+  ids.forEach(id => p[id] = document.getElementById(id).value);
+  localStorage.setItem("rvsqProfile", JSON.stringify(p));
+  renderPrefs();
+  appendHistory("Profil enregistré");
+  setStatus("Profil enregistré");
+}
+
+function setStatus(t){ document.getElementById("status").textContent = t; }
+
+function appendHistory(t){
+  const li = document.createElement("li");
+  li.textContent = new Date().toLocaleString("fr-CA") + " - " + t;
+  document.getElementById("history").prepend(li);
+}
+
+function appendLog(t){
+  const el = document.getElementById("log");
+  el.textContent += t + "\n";
+}
+
+async function call(path, method="POST"){
+  const profile = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
+  const r = await fetch(apiBase() + path, {
+    method,
+    headers: {"Content-Type":"application/json"},
+    body: method === "GET" ? undefined : JSON.stringify({profile})
+  });
+  const j = await r.json();
+  setStatus(j.status || "ok");
+  appendHistory(path.replace("/", "") + " - " + (j.status || "ok"));
+  appendLog(JSON.stringify(j, null, 2));
+}
+
+function startBot(){ call("/start"); }
+function pauseBot(){ call("/pause"); }
+function resumeBot(){ call("/resume"); }
+function stopBot(){ call("/stop"); }
+
+document.addEventListener("change", renderPrefs);
+loadProfile();
+</script>
+</body>
+</html>
