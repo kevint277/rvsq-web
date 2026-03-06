@@ -42,7 +42,9 @@ export class BrowserEngine {
     if (this.browser) return;
     emit("log", "Lancement du navigateur serveur");
     this.browser = await chromium.launch({
-      headless: String(profile?.headless ?? "true") !== "false"
+      headless: String(profile?.headless ?? "true") !== "false",
+      chromiumSandbox: false,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
     this.context = await this.browser.newContext();
     this.page = await this.context.newPage();

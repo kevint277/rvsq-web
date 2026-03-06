@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: rvsq-web-backend-v31
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/.cache/playwright

@@ -1,10 +1,11 @@
 {
   "name": "rvsq-bot-web-backend-v3",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "cors": "^2.8.5",

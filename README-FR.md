@@ -24,3 +24,22 @@ Le point à terminer est l'intégration fine des sélecteurs et de l'analyse des
 ## Remarque
 Le backend utilise Playwright.
 Selon l'hébergeur, il peut être nécessaire d'ajuster l'environnement ou le plan pour exécuter Chromium correctement.
+
+
+## Correctif Render pour Playwright
+Cette version 3.1 ajoute:
+- `postinstall` dans `backend/package.json` pour exécuter `npx playwright install chromium`
+- variable d'environnement recommandée par Render:
+  - `PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.cache/playwright`
+- lancement Chromium avec:
+  - `chromiumSandbox: false`
+  - `--no-sandbox`
+  - `--disable-setuid-sandbox`
+
+### Réglages Render à utiliser
+- Root Directory: `backend`
+- Build Command: `npm install`
+- Start Command: `npm start`
+
+### Important
+Après avoir ajouté la variable d'environnement sur Render, fais un Manual Deploy sans cache si possible.
