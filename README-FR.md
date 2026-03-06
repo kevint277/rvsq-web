@@ -1,89 +1,26 @@
-import express from "express";
-import cors from "cors";
-import { runtime, db, addHistory, saveProfile } from "./store.js";
+# RVSQ Bot Web V3
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+## Ce que cette V3 apporte
+- Frontend V3 avec événements en direct par SSE
+- Historique persistant côté backend
+- Profils persistants côté backend
+- Backend navigateur avec Playwright
+- Moteur structuré: démarrer, pause, reprendre, stop
 
-function statusText() {
-  if (runtime.running && runtime.paused) return "En pause";
-  if (runtime.running) return "En cours";
-  if (runtime.lastAction === "Arrêté") return "Arrêté";
-  return "Prêt";
-}
+## Important
+Cette V3 est la bonne base d'architecture, mais je ne prétends pas qu'elle est déjà validée contre le site réel.
+Le point à terminer est l'intégration fine des sélecteurs et de l'analyse des créneaux.
 
-app.get("/", (req, res) => {
-  res.json({ ok: true, message: "Backend RVSQ V2 prêt" });
-});
+## Déploiement
+### Backend sur Render
+- Root Directory: backend
+- Build Command: npm install
+- Start Command: npm start
 
-app.get("/status", (req, res) => {
-  res.json({
-    status: statusText(),
-    state: {
-      ...runtime,
-      historyCount: db.history.length,
-      profileCount: db.profiles.size
-    }
-  });
-});
+### Frontend sur Netlify
+- Dépose le dossier frontend
+- Dans le site, entre l'URL du backend Render dans le champ prévu
 
-app.get("/history", (req, res) => {
-  res.json({ items: db.history });
-});
-
-app.post("/profiles/save", (req, res) => {
-  const profile = req.body?.profile || {};
-  const id = saveProfile(profile);
-  res.json({ ok: true, profileId: id, message: "Profil sauvegardé" });
-});
-
-app.get("/profiles", (req, res) => {
-  res.json({ items: Array.from(db.profiles.values()) });
-});
-
-app.post("/start", (req, res) => {
-  const profile = req.body?.profile || {};
-  const profileId = saveProfile(profile);
-  runtime.running = true;
-  runtime.paused = false;
-  runtime.startedAt = new Date().toISOString();
-  runtime.lastAction = "Démarré";
-  runtime.profileId = profileId;
-  db.sessions.push({ startedAt: runtime.startedAt, profileId });
-  addHistory("info", "Démarrage du bot", { profileId });
-  res.json({
-    status: "Démarré",
-    note: "Backend V2 branché. Le vrai moteur d'automatisation reste à connecter.",
-    state: runtime
-  });
-});
-
-app.post("/pause", (req, res) => {
-  runtime.paused = true;
-  runtime.lastAction = "En pause";
-  addHistory("info", "Bot mis en pause");
-  res.json({ status: "En pause", note: "Pause enregistrée.", state: runtime });
-});
-
-app.post("/resume", (req, res) => {
-  runtime.running = true;
-  runtime.paused = false;
-  runtime.lastAction = "Repris";
-  addHistory("info", "Bot repris");
-  res.json({ status: "Repris", note: "Reprise enregistrée.", state: runtime });
-});
-
-app.post("/stop", (req, res) => {
-  runtime.running = false;
-  runtime.paused = false;
-  runtime.lastAction = "Arrêté";
-  addHistory("info", "Bot arrêté");
-  res.json({ status: "Arrêté", note: "Arrêt enregistré.", state: runtime });
-});
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  addHistory("info", "Backend démarré", { port });
-  console.log(`Backend RVSQ V2 en écoute sur le port ${port}`);
-});
+## Remarque
+Le backend utilise Playwright.
+Selon l'hébergeur, il peut être nécessaire d'ajuster l'environnement ou le plan pour exécuter Chromium correctement.
