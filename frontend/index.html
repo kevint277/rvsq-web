@@ -5,28 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RVSQ Bot Web</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; background:#f6f7fb; color:#1b1f2a; }
-    .wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
-    .card { background:#fff; border-radius:16px; padding:20px; box-shadow:0 6px 24px rgba(0,0,0,.08); margin-bottom:16px; }
-    .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    label { display:block; font-size:14px; margin-bottom:6px; color:#4c566a; }
-    input, select { width:100%; padding:10px 12px; border:1px solid #d7dce5; border-radius:10px; box-sizing:border-box; }
-    button { padding:10px 14px; border:none; border-radius:10px; cursor:pointer; margin-right:8px; margin-bottom:8px; }
-    .primary { background:#2563eb; color:white; }
-    .secondary { background:#e5e7eb; }
-    .danger { background:#dc2626; color:white; }
-    pre { white-space:pre-wrap; background:#0f172a; color:#e2e8f0; padding:12px; border-radius:12px; min-height:120px; }
-    .muted { color:#64748b; font-size:14px; }
+    :root{
+      --bg:#f5f7fb; --card:#ffffff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+      --primary:#2563eb; --danger:#dc2626; --warning:#d97706;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1000px;margin:0 auto;padding:20px}
+    .grid{display:grid;gap:16px}
+    .hero,.card{background:var(--card);border-radius:18px;box-shadow:0 8px 28px rgba(15,23,42,.08)}
+    .hero{padding:22px}
+    .hero h1{margin:0 0 6px;font-size:32px}
+    .muted{color:var(--muted)}
+    .card{padding:18px}
+    .row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    @media (max-width:700px){ .row,.row3{grid-template-columns:1fr} }
+    label{display:block;font-size:14px;margin-bottom:6px;color:#475569}
+    input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+    button{border:none;border-radius:12px;padding:12px 16px;cursor:pointer;font-weight:600}
+    .primary{background:var(--primary);color:#fff}
+    .secondary{background:#e5e7eb}
+    .danger{background:var(--danger);color:#fff}
+    .toolbar{display:flex;flex-wrap:wrap;gap:10px}
+    .status{display:flex;align-items:center;gap:10px;font-weight:700}
+    .dot{width:12px;height:12px;border-radius:999px;background:#94a3b8}
+    .dot.ready{background:#94a3b8}.dot.running{background:var(--primary)}.dot.paused{background:var(--warning)}.dot.stopped{background:var(--danger)}
+    .list{margin:0;padding-left:18px}
+    pre{margin:0;white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:14px;min-height:160px;max-height:320px;overflow:auto}
+    .small{font-size:13px}
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="card">
+<div class="wrap grid">
+  <section class="hero">
     <h1>RVSQ Bot Web</h1>
-    <p class="muted">Base web partageable. Profil local, options, historique et vue avancée.</p>
-  </div>
+    <div class="muted">Version web partageable avec profils locaux, historique, vue avancée et backend V2.</div>
+  </section>
 
-  <div class="card">
+  <section class="card">
+    <div class="row3">
+      <div>
+        <label>URL du backend</label>
+        <input id="apiBase" placeholder="https://ton-backend.onrender.com">
+      </div>
+      <div>
+        <label>État</label>
+        <div class="status"><span id="statusDot" class="dot ready"></span><span id="statusText">Prêt</span></div>
+      </div>
+      <div>
+        <label>Dernière action</label>
+        <div id="lastAction" class="small muted">Aucune</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Profil</h2>
     <div class="row">
       <div><label>Prénom</label><input id="firstName"></div>
@@ -36,106 +70,165 @@
       <div><label>Date de naissance</label><input id="birthDate" placeholder="AAAA-MM-JJ"></div>
       <div><label>Sexe</label><select id="gender"><option value="M">Homme</option><option value="F">Femme</option></select></div>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
+  <section class="card">
     <h2>Options</h2>
     <div class="row">
       <div><label>Vue avancée</label><select id="advanced"><option value="false">Non</option><option value="true">Oui</option></select></div>
       <div><label>Afficher l'historique récent</label><select id="showHistory"><option value="true">Oui</option><option value="false">Non</option></select></div>
       <div><label>Heures critiques</label><select id="critical"><option value="false">Non</option><option value="true">Oui</option></select></div>
-      <div><label>Durée de la plage critique (minutes)</label><input id="criticalMinutes" type="number" value="5"></div>
+      <div><label>Durée de la plage critique (minutes)</label><input id="criticalMinutes" type="number" min="1" value="5"></div>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <button class="primary" onclick="saveProfile()">Enregistrer</button>
-    <button class="secondary" onclick="startBot()">Démarrer</button>
-    <button class="secondary" onclick="pauseBot()">Pause</button>
-    <button class="secondary" onclick="resumeBot()">Reprendre</button>
-    <button class="danger" onclick="stopBot()">Stop</button>
-  </div>
+  <section class="card">
+    <div class="toolbar">
+      <button class="primary" onclick="saveAll()">Enregistrer</button>
+      <button class="secondary" onclick="startBot()">Démarrer</button>
+      <button class="secondary" onclick="pauseBot()">Pause</button>
+      <button class="secondary" onclick="resumeBot()">Reprendre</button>
+      <button class="danger" onclick="stopBot()">Stop</button>
+      <button class="secondary" onclick="refreshStatus()">Actualiser</button>
+      <button class="secondary" onclick="testNotification()">Tester notification</button>
+    </div>
+  </section>
 
-  <div class="card">
-    <h2>État</h2>
-    <div id="status">Prêt</div>
-  </div>
-
-  <div class="card" id="historyCard">
+  <section class="card" id="historyCard">
     <h2>Historique récent</h2>
-    <ul id="history"></ul>
-  </div>
+    <ul id="history" class="list"></ul>
+  </section>
 
-  <div class="card" id="debugCard" style="display:none">
+  <section class="card" id="debugCard" style="display:none">
     <h2>Vue avancée</h2>
     <pre id="log"></pre>
-  </div>
+  </section>
 </div>
 
 <script>
-const DEFAULT_API = "https://rvsq-web.onrender.com";
-const ids = ["firstName","lastName","nam","seq","birthDate","gender","advanced","showHistory","critical","criticalMinutes"];
+const ids = ["firstName","lastName","nam","seq","birthDate","gender","advanced","showHistory","critical","criticalMinutes","apiBase"];
+const defaultApi = "http://localhost:3000";
 
-function apiBase() {
-  const stored = localStorage.getItem("apiBase");
-  return stored && stored.trim() ? stored.trim() : DEFAULT_API;
+function getApiBase(){
+  const v = (localStorage.getItem("apiBase") || "").trim();
+  return v || defaultApi;
 }
-
-function loadProfile(){
-  const p = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
-  ids.forEach(id => { if (p[id] != null) document.getElementById(id).value = p[id]; });
-  renderPrefs();
-}
-
-function renderPrefs(){
-  const advanced = document.getElementById("advanced").value === "true";
-  const showHistory = document.getElementById("showHistory").value === "true";
-  document.getElementById("debugCard").style.display = advanced ? "block" : "none";
-  document.getElementById("historyCard").style.display = showHistory ? "block" : "none";
-}
-
-function saveProfile(){
+function saveLocal(){
   const p = {};
   ids.forEach(id => p[id] = document.getElementById(id).value);
   localStorage.setItem("rvsqProfile", JSON.stringify(p));
-  renderPrefs();
-  appendHistory("Profil enregistré");
-  setStatus("Profil enregistré");
+  localStorage.setItem("apiBase", document.getElementById("apiBase").value.trim());
 }
-
-function setStatus(t){ document.getElementById("status").textContent = t; }
-
-function appendHistory(t){
+function loadLocal(){
+  const p = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === "apiBase") el.value = localStorage.getItem("apiBase") || "";
+    else if (p[id] != null) el.value = p[id];
+  });
+  renderPrefs();
+}
+function renderPrefs(){
+  const adv = document.getElementById("advanced").value === "true";
+  const hist = document.getElementById("showHistory").value === "true";
+  document.getElementById("debugCard").style.display = adv ? "block" : "none";
+  document.getElementById("historyCard").style.display = hist ? "block" : "none";
+}
+function profilePayload(){
+  const p = {};
+  ["firstName","lastName","nam","seq","birthDate","gender","advanced","showHistory","critical","criticalMinutes"].forEach(id => p[id] = document.getElementById(id).value);
+  return p;
+}
+function addHistory(text){
   const li = document.createElement("li");
-  li.textContent = new Date().toLocaleString("fr-CA") + " - " + t;
+  li.textContent = new Date().toLocaleString("fr-CA") + " - " + text;
   document.getElementById("history").prepend(li);
 }
-
-function appendLog(t){
-  const el = document.getElementById("log");
-  el.textContent += t + "\n";
+function setStatus(status, action){
+  const dot = document.getElementById("statusDot");
+  const text = document.getElementById("statusText");
+  const map = { "Prêt":"ready", "En cours":"running", "En pause":"paused", "Arrêté":"stopped", "Démarré":"running", "Repris":"running" };
+  text.textContent = status || "Prêt";
+  dot.className = "dot " + (map[status] || "ready");
+  document.getElementById("lastAction").textContent = action || "";
 }
-
-async function call(path, method="POST"){
-  const profile = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
-  const r = await fetch(apiBase() + path, {
+function log(obj){
+  const el = document.getElementById("log");
+  el.textContent += (typeof obj === "string" ? obj : JSON.stringify(obj, null, 2)) + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+async function api(path, method="GET", body){
+  const res = await fetch(getApiBase() + path, {
     method,
     headers: {"Content-Type":"application/json"},
-    body: method === "GET" ? undefined : JSON.stringify({profile})
+    body: body ? JSON.stringify(body) : undefined
   });
-  const j = await r.json();
-  setStatus(j.status || "ok");
-  appendHistory(path.replace("/", "") + " - " + (j.status || "ok"));
-  appendLog(JSON.stringify(j, null, 2));
+  const data = await res.json();
+  if (document.getElementById("advanced").value === "true") log(data);
+  return data;
 }
-
-function startBot(){ call("/start"); }
-function pauseBot(){ call("/pause"); }
-function resumeBot(){ call("/resume"); }
-function stopBot(){ call("/stop"); }
-
-document.addEventListener("change", renderPrefs);
-loadProfile();
+async function saveAll(){
+  saveLocal();
+  renderPrefs();
+  try {
+    const data = await api("/profiles/save", "POST", { profile: profilePayload() });
+    addHistory("Profil enregistré");
+    await refreshStatus();
+  } catch (e) {
+    addHistory("Erreur d'enregistrement");
+    log(String(e));
+  }
+}
+async function refreshStatus(){
+  const data = await api("/status");
+  setStatus(data.status, data.state?.lastAction || "");
+  await loadHistory();
+}
+async function startBot(){
+  saveLocal();
+  const data = await api("/start", "POST", { profile: profilePayload() });
+  setStatus(data.status, data.note || data.state?.lastAction || "");
+  addHistory("Démarrage demandé");
+}
+async function pauseBot(){
+  const data = await api("/pause", "POST");
+  setStatus(data.status, data.note || "");
+  addHistory("Pause demandée");
+}
+async function resumeBot(){
+  const data = await api("/resume", "POST");
+  setStatus(data.status, data.note || "");
+  addHistory("Reprise demandée");
+}
+async function stopBot(){
+  const data = await api("/stop", "POST");
+  setStatus(data.status, data.note || "");
+  addHistory("Arrêt demandé");
+}
+async function loadHistory(){
+  const data = await api("/history");
+  const ul = document.getElementById("history");
+  ul.innerHTML = "";
+  (data.items || []).slice().reverse().forEach(item => {
+    const li = document.createElement("li");
+    li.textContent = new Date(item.ts).toLocaleString("fr-CA") + " - " + item.type + " - " + item.message;
+    ul.appendChild(li);
+  });
+}
+function testNotification(){
+  if (!("Notification" in window)) { alert("Notifications non supportées"); return; }
+  if (Notification.permission === "granted") {
+    new Notification("RVSQ Bot Web", { body: "Test de notification réussi." });
+    return;
+  }
+  Notification.requestPermission().then(p => {
+    if (p === "granted") new Notification("RVSQ Bot Web", { body: "Test de notification réussi." });
+  });
+}
+document.addEventListener("change", () => { saveLocal(); renderPrefs(); });
+loadLocal();
+refreshStatus();
 </script>
 </body>
 </html>
