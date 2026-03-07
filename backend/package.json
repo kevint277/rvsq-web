@@ -1,6 +1,6 @@
 {
-  "name": "rvsq-bot-web-backend-v4",
-  "version": "4.2.0",
+  "name": "rvsq-bot-web-backend-v5",
+  "version": "5.0.0",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
