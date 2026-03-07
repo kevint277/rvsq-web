@@ -3,281 +3,436 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RVSQ Bot Web V3</title>
+  <title>RVSQ Bot</title>
   <style>
-    :root{
-      --bg:#f5f7fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb;
-      --primary:#2563eb; --danger:#dc2626; --warning:#d97706; --success:#16a34a;
+    :root {
+      --bg: #f0f4ff;
+      --card: #fff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --success: #16a34a;
+      --radius: 16px;
     }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
-    .wrap{max-width:1100px;margin:0 auto;padding:20px;display:grid;gap:16px}
-    .card{background:var(--card);border-radius:18px;box-shadow:0 8px 28px rgba(15,23,42,.08);padding:18px}
-    .hero{padding:22px}
-    .hero h1{margin:0 0 6px;font-size:32px}
-    .row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-    @media (max-width: 700px){ .row,.row3{grid-template-columns:1fr} }
-    label{display:block;font-size:14px;margin-bottom:6px;color:#475569}
-    input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
-    button{border:none;border-radius:12px;padding:12px 16px;cursor:pointer;font-weight:600}
-    .primary{background:var(--primary);color:#fff}
-    .secondary{background:#e5e7eb}
-    .danger{background:var(--danger);color:#fff}
-    .toolbar{display:flex;flex-wrap:wrap;gap:10px}
-    .status{display:flex;align-items:center;gap:10px;font-weight:700}
-    .dot{width:12px;height:12px;border-radius:999px;background:#94a3b8}
-    .dot.ready{background:#94a3b8}.dot.running{background:var(--primary)}.dot.paused{background:var(--warning)}.dot.stopped{background:var(--danger)}.dot.found{background:var(--success)}
-    .list{margin:0;padding-left:18px}
-    pre{margin:0;white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:14px;min-height:180px;max-height:340px;overflow:auto}
-    .muted{color:var(--muted)}
-    .banner{display:none;border-radius:14px;padding:14px 16px;font-weight:700}
-    .banner.show{display:block}
-    .banner.found{background:#dcfce7;color:#166534}
-    .banner.error{background:#fee2e2;color:#991b1b}
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── Header ── */
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+    .header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .header h1 span { color: var(--primary); }
+    .mode-toggle {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--card); border: 1.5px solid var(--line);
+      border-radius: 999px; padding: 6px 14px;
+      cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted);
+      transition: border-color .2s, color .2s;
+      user-select: none;
+    }
+    .mode-toggle:hover { border-color: var(--primary); color: var(--primary); }
+    .mode-toggle .gear { font-size: 15px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card); border-radius: var(--radius);
+      box-shadow: 0 2px 16px rgba(15,23,42,.07);
+      padding: 20px;
+    }
+    .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+
+    /* ── Status bar ── */
+    .status-bar { display: flex; align-items: center; gap: 14px; }
+    .dot { width: 11px; height: 11px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; }
+    .dot.running { background: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.18); animation: pulse 1.5s infinite; }
+    .dot.paused  { background: var(--warning); }
+    .dot.stopped { background: #94a3b8; }
+    .dot.found   { background: var(--success); box-shadow: 0 0 0 3px rgba(22,163,74,.2); }
+    @keyframes pulse { 0%,100%{ box-shadow:0 0 0 3px rgba(37,99,235,.18); } 50%{ box-shadow:0 0 0 6px rgba(37,99,235,.06); } }
+    .status-text { font-size: 16px; font-weight: 700; }
+    .status-action { font-size: 13px; color: var(--muted); margin-left: auto; }
+
+    /* ── Backend URL ── */
+    .url-row { display: flex; gap: 8px; align-items: center; }
+    .url-row input { flex: 1; }
+    .url-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #dcfce7; color: #166534; white-space: nowrap; }
+    .url-badge.err { background: #fee2e2; color: #991b1b; }
+
+    /* ── Form fields ── */
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .fields .full { grid-column: 1/-1; }
+    @media (max-width: 480px) { .fields { grid-template-columns: 1fr; } .fields .full { grid-column: 1; } }
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
+    input, select {
+      width: 100%; padding: 11px 12px;
+      border: 1.5px solid var(--line); border-radius: 10px;
+      background: #f8fafc; color: var(--text); font-size: 15px;
+      transition: border-color .15s;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--primary); background: #fff; }
+
+    /* ── Buttons ── */
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: none; border-radius: 12px; padding: 13px 20px;
+      cursor: pointer; font-weight: 700; font-size: 15px;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--primary); color: #fff; flex: 1; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-stop { background: #fee2e2; color: var(--danger); }
+    .btn-secondary { background: var(--line); color: var(--text); }
+    .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 9px; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Banners ── */
+    .banner { display: none; border-radius: 12px; padding: 14px 16px; font-weight: 600; font-size: 14px; }
+    .banner.show { display: flex; align-items: flex-start; gap: 10px; }
+    .banner.found { background: #dcfce7; color: #166534; }
+    .banner.error { background: #fee2e2; color: #991b1b; }
+    .banner-icon { font-size: 18px; flex-shrink: 0; }
+
+    /* ── Log / History ── */
+    .log-wrap { background: #0f172a; border-radius: 12px; padding: 14px; max-height: 280px; overflow-y: auto; }
+    .log-line { font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; color: #94a3b8; line-height: 1.7; }
+    .log-line.warn  { color: #fbbf24; }
+    .log-line.error { color: #f87171; }
+    .log-line.found { color: #4ade80; font-weight: 700; }
+    .log-line.info  { color: #93c5fd; }
+    .log-empty { font-size: 12px; color: #475569; font-style: italic; }
+
+    /* ── Advanced section ── */
+    .adv-section { display: none; }
+    .adv-section.visible { display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── Separator ── */
+    .sep { height: 1px; background: var(--line); margin: 4px 0; }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <section class="card hero">
-    <h1>RVSQ Bot Web V3</h1>
-    <div class="muted">Frontend V3 avec événements en direct, historique persistant et vue avancée.</div>
-  </section>
 
-  <section class="card">
-    <div class="row3">
-      <div>
-        <label>URL du backend</label>
-        <input id="apiBase" placeholder="https://ton-backend.onrender.com">
+  <!-- Header -->
+  <div class="header">
+    <h1>RVSQ <span>Bot</span></h1>
+    <div class="mode-toggle" id="modeToggle" onclick="toggleAdvanced()">
+      <span class="gear">⚙️</span>
+      <span id="modeLabel">Mode avancé</span>
+    </div>
+  </div>
+
+  <!-- Bannières -->
+  <div id="foundBanner" class="banner found"><span class="banner-icon">🎉</span><span id="foundMsg"></span></div>
+  <div id="errorBanner" class="banner error"><span class="banner-icon">⚠️</span><span id="errorMsg"></span></div>
+
+  <!-- Statut + Backend URL -->
+  <div class="card">
+    <div class="card-title">Connexion backend</div>
+    <div class="url-row" style="margin-bottom:14px">
+      <input id="apiBase" placeholder="https://ton-backend.onrender.com" />
+      <span class="url-badge err" id="connBadge">—</span>
+    </div>
+    <div class="status-bar">
+      <span class="dot" id="statusDot"></span>
+      <span class="status-text" id="statusText">Prêt</span>
+      <span class="status-action" id="lastAction"></span>
+    </div>
+  </div>
+
+  <!-- Profil essentiel -->
+  <div class="card">
+    <div class="card-title">Informations patient</div>
+    <div class="fields">
+      <div><label>Prénom</label><input id="firstName" autocomplete="given-name" /></div>
+      <div><label>Nom</label><input id="lastName" autocomplete="family-name" /></div>
+      <div class="full"><label>Numéro d'assurance maladie (NAM)</label><input id="nam" placeholder="XXXX 0000 0000" autocomplete="off" /></div>
+      <div><label>Séquence</label><input id="seq" placeholder="01" /></div>
+      <div><label>Date de naissance</label><input id="birthDate" placeholder="AAAA-MM-JJ" /></div>
+      <div><label>Sexe</label>
+        <select id="gender"><option value="M">Homme</option><option value="F">Femme</option></select>
       </div>
-      <div>
-        <label>État</label>
-        <div class="status"><span id="statusDot" class="dot ready"></span><span id="statusText">Prêt</span></div>
+      <div><label>Raison de consultation</label>
+        <select id="reasonCode">
+          <option value="urgent">Urgente</option>
+          <option value="semiurgent">Semi-urgente</option>
+          <option value="suivi">Suivi</option>
+        </select>
       </div>
-      <div>
-        <label>Dernière action</label>
-        <div id="lastAction" class="muted">Aucune</div>
+      <div><label>Rayon de recherche</label>
+        <select id="perimeterKm">
+          <option value="10">10 km</option>
+          <option value="25">25 km</option>
+          <option value="50" selected>50 km</option>
+        </select>
       </div>
     </div>
-  </section>
+  </div>
 
-  <section id="foundBanner" class="banner found"></section>
-  <section id="errorBanner" class="banner error"></section>
-
-  <section class="card">
-    <h2>Profil</h2>
-    <div class="row">
-      <div><label>Prénom</label><input id="firstName"></div>
-      <div><label>Nom</label><input id="lastName"></div>
-      <div><label>NAM</label><input id="nam"></div>
-      <div><label>Séquence</label><input id="seq"></div>
-      <div><label>Date de naissance</label><input id="birthDate" placeholder="AAAA-MM-JJ"></div>
-      <div><label>Sexe</label><select id="gender"><option value="M">Homme</option><option value="F">Femme</option></select></div>
-      <div><label>Raison</label><select id="reasonCode"><option value="urgent">Urgente</option><option value="semiurgent">Semi-urgente</option><option value="suivi">Suivi</option></select></div>
-      <div><label>Rayon (km)</label><select id="perimeterKm"><option value="10">10</option><option value="25">25</option><option value="50" selected>50</option></select></div>
-      <div><label>Code postal</label><input id="postalCode" placeholder="Laisse vide si le site l'auto-remplit"></div>
-      <div><label>Intervalle (sec)</label><input id="intervalSeconds" type="number" min="2" value="5"></div>
+  <!-- Actions principales -->
+  <div class="card">
+    <div class="actions">
+      <button class="btn btn-primary" id="btnStart" onclick="startBot()">▶ Démarrer</button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopBot()">■ Arrêter</button>
     </div>
-  </section>
+  </div>
 
-  <section class="card">
-    <h2>Options</h2>
-    <div class="row">
-      <div><label>Vue avancée</label><select id="advanced"><option value="false">Non</option><option value="true">Oui</option></select></div>
-      <div><label>Afficher l'historique récent</label><select id="showHistory"><option value="true">Oui</option><option value="false">Non</option></select></div>
-      <div><label>Heures critiques</label><select id="critical"><option value="false">Non</option><option value="true">Oui</option></select></div>
-      <div><label>Durée de la plage critique (minutes)</label><input id="criticalMinutes" type="number" min="1" value="5"></div>
-      <div><label>Mode headless backend</label><select id="headless"><option value="true">Oui</option><option value="false">Non</option></select></div>
-      <div><label>Afficher l'historique trouvé</label><select id="showFound"><option value="true">Oui</option><option value="false">Non</option></select></div>
+  <!-- ══════════ MODE AVANCÉ ══════════ -->
+  <div class="adv-section" id="advSection">
+
+    <!-- Options avancées -->
+    <div class="card">
+      <div class="card-title">Paramètres avancés</div>
+      <div class="fields">
+        <div><label>Code postal</label><input id="postalCode" placeholder="Auto si vide" /></div>
+        <div><label>Intervalle (secondes)</label><input id="intervalSeconds" type="number" min="2" value="5" /></div>
+        <div><label>Mode headless backend</label>
+          <select id="headless"><option value="true">Oui (serveur)</option><option value="false">Non (debug)</option></select>
+        </div>
+        <div><label>Heures critiques</label>
+          <select id="critical"><option value="false">Non</option><option value="true">Oui</option></select>
+        </div>
+        <div><label>Durée plage critique (min)</label><input id="criticalMinutes" type="number" min="1" value="5" /></div>
+      </div>
     </div>
-  </section>
 
-  <section class="card">
-    <div class="toolbar">
-      <button class="primary" onclick="saveProfile()">Enregistrer</button>
-      <button class="secondary" onclick="startBot()">Démarrer</button>
-      <button class="secondary" onclick="pauseBot()">Pause</button>
-      <button class="secondary" onclick="resumeBot()">Reprendre</button>
-      <button class="danger" onclick="stopBot()">Stop</button>
-      <button class="secondary" onclick="refreshStatus()">Actualiser</button>
-      <button class="secondary" onclick="testNotification()">Tester notification</button>
+    <!-- Actions avancées -->
+    <div class="card">
+      <div class="card-title">Contrôles</div>
+      <div class="actions">
+        <button class="btn btn-secondary btn-sm" onclick="pauseBot()">⏸ Pause</button>
+        <button class="btn btn-secondary btn-sm" onclick="resumeBot()">▶ Reprendre</button>
+        <button class="btn btn-secondary btn-sm" onclick="refreshStatus()">↻ Actualiser</button>
+        <button class="btn btn-secondary btn-sm" onclick="testNotification()">🔔 Test notif</button>
+        <button class="btn btn-secondary btn-sm" onclick="saveProfile()">💾 Enregistrer</button>
+      </div>
     </div>
-  </section>
 
-  <section class="card" id="historyCard">
-    <h2>Historique récent</h2>
-    <ul id="history" class="list"></ul>
-  </section>
+    <!-- Log temps réel -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+        <span>Log en direct</span>
+        <button class="btn btn-secondary btn-sm" onclick="clearLog()">Effacer</button>
+      </div>
+      <div class="log-wrap" id="logWrap">
+        <div class="log-empty" id="logEmpty">Aucun événement pour l'instant…</div>
+      </div>
+    </div>
 
-  <section class="card" id="debugCard" style="display:none">
-    <h2>Vue avancée</h2>
-    <pre id="log"></pre>
-  </section>
+  </div>
+  <!-- ══════════ FIN MODE AVANCÉ ══════════ -->
+
 </div>
 
 <script>
-const ids = ["apiBase","firstName","lastName","nam","seq","birthDate","gender","reasonCode","perimeterKm","postalCode","intervalSeconds","advanced","showHistory","critical","criticalMinutes","headless","showFound"];
+// ── IDs persistés ───────────────────────────────────────────
+const PROFILE_IDS = ["firstName","lastName","nam","seq","birthDate","gender","reasonCode","perimeterKm","postalCode","intervalSeconds","headless","critical","criticalMinutes"];
 const defaultApi = "http://localhost:3000";
 let evtSource = null;
+let advancedMode = false;
 
-function getApiBase() {
-  const value = (localStorage.getItem("apiBase") || "").trim();
-  return value || defaultApi;
-}
+// ── localStorage helpers ─────────────────────────────────────
+function getApiBase() { return (localStorage.getItem("apiBase") || "").trim() || defaultApi; }
+
 function saveLocal() {
-  const profile = {};
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (id === "apiBase") localStorage.setItem("apiBase", el.value.trim());
-    else profile[id] = el.value;
-  });
-  localStorage.setItem("rvsqProfileV3", JSON.stringify(profile));
+  localStorage.setItem("apiBase", document.getElementById("apiBase").value.trim());
+  const p = {};
+  PROFILE_IDS.forEach(id => { const el = document.getElementById(id); if (el) p[id] = el.value; });
+  localStorage.setItem("rvsqProfile", JSON.stringify(p));
 }
+
 function loadLocal() {
-  const profile = JSON.parse(localStorage.getItem("rvsqProfileV3") || "{}");
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (id === "apiBase") el.value = localStorage.getItem("apiBase") || "";
-    else if (profile[id] != null) el.value = profile[id];
-  });
-  renderPrefs();
+  document.getElementById("apiBase").value = localStorage.getItem("apiBase") || "";
+  const p = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
+  PROFILE_IDS.forEach(id => { const el = document.getElementById(id); if (el && p[id] != null) el.value = p[id]; });
+  advancedMode = localStorage.getItem("advancedMode") === "true";
+  applyAdvancedMode();
 }
-function renderPrefs() {
-  const adv = document.getElementById("advanced").value === "true";
-  const hist = document.getElementById("showHistory").value === "true";
-  document.getElementById("debugCard").style.display = adv ? "block" : "none";
-  document.getElementById("historyCard").style.display = hist ? "block" : "none";
+
+// ── Advanced mode toggle ────────────────────────────────────
+function toggleAdvanced() {
+  advancedMode = !advancedMode;
+  localStorage.setItem("advancedMode", advancedMode);
+  applyAdvancedMode();
 }
-function payloadProfile() {
-  const out = {};
-  ["firstName","lastName","nam","seq","birthDate","gender","reasonCode","perimeterKm","postalCode","intervalSeconds","critical","criticalMinutes","headless","showFound"].forEach(id => out[id] = document.getElementById(id).value);
-  return out;
+function applyAdvancedMode() {
+  document.getElementById("advSection").classList.toggle("visible", advancedMode);
+  document.getElementById("modeLabel").textContent = advancedMode ? "Mode simple" : "Mode avancé";
 }
+
+// ── Status display ───────────────────────────────────────────
 function setStatus(status, action) {
+  const map = { "En cours":"running", "Démarré":"running", "Repris":"running", "En pause":"paused", "Arrêté":"stopped", "Créneau trouvé":"found" };
   const dot = document.getElementById("statusDot");
-  const text = document.getElementById("statusText");
-  const map = { "Prêt":"ready", "En cours":"running", "En pause":"paused", "Arrêté":"stopped", "Créneau trouvé":"found", "Démarré":"running", "Repris":"running" };
-  text.textContent = status || "Prêt";
-  dot.className = "dot " + (map[status] || "ready");
-  document.getElementById("lastAction").textContent = action || "";
+  dot.className = "dot " + (map[status] || "");
+  document.getElementById("statusText").textContent = status || "Prêt";
+  if (action) document.getElementById("lastAction").textContent = action;
+
+  const btnStart = document.getElementById("btnStart");
+  const btnStop  = document.getElementById("btnStop");
+  const running = (status === "En cours" || status === "Démarré" || status === "Repris" || status === "En pause");
+  btnStart.disabled = running;
+  btnStop.disabled  = !running;
 }
-function showFound(message) {
-  const box = document.getElementById("foundBanner");
-  box.textContent = message;
-  box.classList.add("show");
+
+function setConnBadge(ok) {
+  const b = document.getElementById("connBadge");
+  b.textContent = ok ? "Connecté" : "Non connecté";
+  b.className = "url-badge " + (ok ? "" : "err");
 }
-function showError(message) {
-  const box = document.getElementById("errorBanner");
-  box.textContent = message;
-  box.classList.add("show");
+
+// ── Banners ─────────────────────────────────────────────────
+function showFound(msg) {
+  document.getElementById("foundMsg").textContent = msg;
+  document.getElementById("foundBanner").classList.add("show");
+}
+function showError(msg) {
+  document.getElementById("errorMsg").textContent = msg;
+  document.getElementById("errorBanner").classList.add("show");
 }
 function clearBanners() {
   document.getElementById("foundBanner").classList.remove("show");
   document.getElementById("errorBanner").classList.remove("show");
 }
-function addHistory(text) {
-  const li = document.createElement("li");
-  li.textContent = new Date().toLocaleString("fr-CA") + " - " + text;
-  document.getElementById("history").prepend(li);
+
+// ── Log ─────────────────────────────────────────────────────
+function addLog(text, type) {
+  const wrap = document.getElementById("logWrap");
+  const empty = document.getElementById("logEmpty");
+  if (empty) empty.remove();
+  const line = document.createElement("div");
+  line.className = "log-line " + (type || "");
+  const ts = new Date().toLocaleTimeString("fr-CA");
+  line.textContent = `${ts}  ${text}`;
+  wrap.appendChild(line);
+  wrap.scrollTop = wrap.scrollHeight;
+  // Garde max 200 lignes
+  const lines = wrap.querySelectorAll(".log-line");
+  if (lines.length > 200) lines[0].remove();
 }
-function log(msg) {
-  if (document.getElementById("advanced").value !== "true") return;
-  const el = document.getElementById("log");
-  el.textContent += (typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)) + "\n";
-  el.scrollTop = el.scrollHeight;
+function clearLog() {
+  const wrap = document.getElementById("logWrap");
+  wrap.innerHTML = '<div class="log-empty" id="logEmpty">Log effacé…</div>';
 }
-async function api(path, method="GET", body) {
-  const res = await fetch(getApiBase() + path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const data = await res.json();
-  log(data);
-  return data;
+
+// ── API ──────────────────────────────────────────────────────
+function payloadProfile() {
+  const out = {};
+  PROFILE_IDS.forEach(id => { const el = document.getElementById(id); if (el) out[id] = el.value; });
+  return out;
 }
+
+async function api(path, method = "GET", body) {
+  try {
+    const res = await fetch(getApiBase() + path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    addLog(`Erreur API ${path}: ${err.message}`, "error");
+    setConnBadge(false);
+    return null;
+  }
+}
+
+async function refreshStatus() {
+  const data = await api("/status");
+  if (!data) return;
+  setConnBadge(true);
+  setStatus(data.status, data.state?.lastAction || "");
+}
+
 async function saveProfile() {
   saveLocal();
-  renderPrefs();
-  const data = await api("/profiles/save", "POST", { profile: payloadProfile() });
-  addHistory("Profil enregistré");
-  setStatus(await statusText(), data.message || "Profil enregistré");
+  await api("/profiles/save", "POST", { profile: payloadProfile() });
+  addLog("Profil enregistré", "info");
 }
-async function statusText() {
-  const data = await api("/status");
-  setStatus(data.status, data.state?.lastAction || "");
-  return data.status;
-}
-async function refreshStatus() {
-  await statusText();
-  await loadHistory();
-}
+
 async function startBot() {
-  clearBanners();
-  saveLocal();
+  clearBanners(); saveLocal();
   const data = await api("/start", "POST", { profile: payloadProfile() });
+  if (!data) return;
+  setConnBadge(true);
   setStatus(data.status, data.state?.lastAction || data.note || "");
-  addHistory("Démarrage demandé");
+  addLog("Démarrage demandé", "info");
 }
-async function pauseBot() {
-  const data = await api("/pause", "POST");
-  setStatus(data.status, data.state?.lastAction || "");
-  addHistory("Pause demandée");
-}
-async function resumeBot() {
-  const data = await api("/resume", "POST");
-  setStatus(data.status, data.state?.lastAction || "");
-  addHistory("Reprise demandée");
-}
+
 async function stopBot() {
   const data = await api("/stop", "POST");
+  if (!data) return;
   setStatus(data.status, data.state?.lastAction || "");
-  addHistory("Arrêt demandé");
+  addLog("Arrêt demandé", "info");
 }
-async function loadHistory() {
-  const data = await api("/history");
-  const ul = document.getElementById("history");
-  ul.innerHTML = "";
-  (data.items || []).slice().reverse().forEach(item => {
-    const li = document.createElement("li");
-    li.textContent = new Date(item.ts).toLocaleString("fr-CA") + " - " + item.type + " - " + item.message;
-    ul.appendChild(li);
+
+async function pauseBot() {
+  const data = await api("/pause", "POST");
+  if (!data) return;
+  setStatus(data.status, data.state?.lastAction || "");
+}
+
+async function resumeBot() {
+  const data = await api("/resume", "POST");
+  if (!data) return;
+  setStatus(data.status, data.state?.lastAction || "");
+}
+
+function testNotification() {
+  if (!("Notification" in window)) { alert("Notifications non supportées"); return; }
+  if (Notification.permission === "granted") {
+    new Notification("RVSQ Bot", { body: "Test de notification ✓" }); return;
+  }
+  Notification.requestPermission().then(p => {
+    if (p === "granted") new Notification("RVSQ Bot", { body: "Notifications activées ✓" });
   });
 }
+
+// ── SSE Events ───────────────────────────────────────────────
 function connectEvents() {
   if (evtSource) evtSource.close();
   evtSource = new EventSource(getApiBase() + "/events");
+  evtSource.onopen = () => setConnBadge(true);
+  evtSource.onerror = () => setConnBadge(false);
   evtSource.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
       if (msg.kind === "status") setStatus(msg.status, msg.lastAction || "");
-      if (msg.kind === "log") addHistory(msg.message);
-      if (msg.kind === "found") {
+      if (msg.kind === "log")    addLog(msg.message, msg.type || "");
+      if (msg.kind === "error")  { addLog(msg.message, "error"); showError(msg.message); }
+      if (msg.kind === "found")  {
+        addLog(msg.message, "found");
         showFound(msg.message);
-        if ("Notification" in window && Notification.permission === "granted") {
-          new Notification("RVSQ Bot Web", { body: msg.message });
-        }
+        if ("Notification" in window && Notification.permission === "granted")
+          new Notification("RVSQ Bot", { body: msg.message });
       }
-      if (msg.kind === "error") showError(msg.message);
-      log(msg);
-    } catch (err) {
-      log(String(err));
-    }
+    } catch (_) {}
   };
 }
-function testNotification() {
-  if (!("Notification" in window)) { alert("Notifications non supportées"); return; }
-  if (Notification.permission === "granted") {
-    new Notification("RVSQ Bot Web", { body: "Test de notification réussi." });
-    return;
-  }
-  Notification.requestPermission().then(p => {
-    if (p === "granted") new Notification("RVSQ Bot Web", { body: "Test de notification réussi." });
-  });
-}
-document.addEventListener("change", () => { saveLocal(); renderPrefs(); });
+
+// ── Reconnect SSE si l'URL du backend change ─────────────────
+document.getElementById("apiBase").addEventListener("change", () => {
+  saveLocal();
+  connectEvents();
+  refreshStatus();
+});
+
+document.addEventListener("change", e => {
+  if (e.target.id !== "apiBase") saveLocal();
+});
+
+// ── Init ─────────────────────────────────────────────────────
 loadLocal();
 connectEvents();
 refreshStatus();
