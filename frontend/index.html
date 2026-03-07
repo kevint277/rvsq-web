@@ -6,236 +6,310 @@
   <title>RVSQ Bot</title>
   <style>
     :root {
-      --bg: #f0f4ff;
-      --card: #fff;
-      --text: #1e293b;
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #0f172a;
       --muted: #64748b;
-      --line: #e2e8f0;
+      --line: #dbe3ee;
       --primary: #2563eb;
-      --primary-dark: #1d4ed8;
+      --primary-2: #1d4ed8;
       --danger: #dc2626;
-      --warning: #d97706;
-      --success: #16a34a;
+      --warn: #d97706;
+      --ok: #16a34a;
+      --soft: #eef4ff;
       --radius: 16px;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
     body {
+      margin: 0;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
     }
-    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 14px; }
-
-    /* ── Header ── */
-    .header { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
-    .header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-    .header h1 span { color: var(--primary); }
-    .mode-toggle {
-      display: flex; align-items: center; gap: 8px;
-      background: var(--card); border: 1.5px solid var(--line);
-      border-radius: 999px; padding: 6px 14px;
-      cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted);
-      transition: border-color .2s, color .2s;
-      user-select: none;
+    .app {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 18px;
     }
-    .mode-toggle:hover { border-color: var(--primary); color: var(--primary); }
-    .mode-toggle .gear { font-size: 15px; }
-
-    /* ── Cards ── */
-    .card {
-      background: var(--card); border-radius: var(--radius);
-      box-shadow: 0 2px 16px rgba(15,23,42,.07);
-      padding: 20px;
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
     }
-    .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
-
-    /* ── Status bar ── */
-    .status-bar { display: flex; align-items: center; gap: 14px; }
-    .dot { width: 11px; height: 11px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; }
-    .dot.running { background: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.18); animation: pulse 1.5s infinite; }
-    .dot.paused  { background: var(--warning); }
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 800;
+    }
+    .muted { color: var(--muted); }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-weight: 700;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #94a3b8;
+    }
+    .dot.running { background: var(--primary); box-shadow: 0 0 0 4px rgba(37,99,235,.14); }
+    .dot.paused { background: var(--warn); }
     .dot.stopped { background: #94a3b8; }
-    .dot.found   { background: var(--success); box-shadow: 0 0 0 3px rgba(22,163,74,.2); }
-    @keyframes pulse { 0%,100%{ box-shadow:0 0 0 3px rgba(37,99,235,.18); } 50%{ box-shadow:0 0 0 6px rgba(37,99,235,.06); } }
-    .status-text { font-size: 16px; font-weight: 700; }
-    .status-action { font-size: 13px; color: var(--muted); margin-left: auto; }
-
-    /* ── Backend URL ── */
-    .url-row { display: flex; gap: 8px; align-items: center; }
-    .url-row input { flex: 1; }
-    .url-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #dcfce7; color: #166534; white-space: nowrap; }
-    .url-badge.err { background: #fee2e2; color: #991b1b; }
-
-    /* ── Form fields ── */
-    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .fields .full { grid-column: 1/-1; }
-    @media (max-width: 480px) { .fields { grid-template-columns: 1fr; } .fields .full { grid-column: 1; } }
-    label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
+    .dot.found { background: var(--ok); box-shadow: 0 0 0 4px rgba(22,163,74,.14); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .tab {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .full { grid-column: 1 / -1; }
+    @media (max-width: 720px) {
+      .grid, .grid-3 { grid-template-columns: 1fr; }
+    }
+    label {
+      display: block;
+      margin: 0 0 6px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--muted);
+      font-weight: 700;
+    }
     input, select {
-      width: 100%; padding: 11px 12px;
-      border: 1.5px solid var(--line); border-radius: 10px;
-      background: #f8fafc; color: var(--text); font-size: 15px;
-      transition: border-color .15s;
-      -webkit-appearance: none;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 15px;
+      background: #fff;
+      color: var(--text);
     }
-    input:focus, select:focus { outline: none; border-color: var(--primary); background: #fff; }
-
-    /* ── Buttons ── */
-    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-    .btn {
-      border: none; border-radius: 12px; padding: 13px 20px;
-      cursor: pointer; font-weight: 700; font-size: 15px;
-      transition: opacity .15s, transform .1s;
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.1);
     }
-    .btn:active { transform: scale(.97); }
-    .btn-primary { background: var(--primary); color: #fff; flex: 1; }
-    .btn-primary:hover { background: var(--primary-dark); }
-    .btn-stop { background: #fee2e2; color: var(--danger); }
-    .btn-secondary { background: var(--line); color: var(--text); }
-    .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 9px; }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-
-    /* ── Banners ── */
-    .banner { display: none; border-radius: 12px; padding: 14px 16px; font-weight: 600; font-size: 14px; }
-    .banner.show { display: flex; align-items: flex-start; gap: 10px; }
-    .banner.found { background: #dcfce7; color: #166534; }
-    .banner.error { background: #fee2e2; color: #991b1b; }
-    .banner-icon { font-size: 18px; flex-shrink: 0; }
-
-    /* ── Log / History ── */
-    .log-wrap { background: #0f172a; border-radius: 12px; padding: 14px; max-height: 280px; overflow-y: auto; }
-    .log-line { font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; color: #94a3b8; line-height: 1.7; }
-    .log-line.warn  { color: #fbbf24; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-2); }
+    .btn-soft { background: #e8eef8; color: var(--text); }
+    .btn-danger { background: #fee2e2; color: #991b1b; }
+    .banner {
+      display: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .banner.show { display: block; }
+    .banner.ok { background: #dcfce7; color: #166534; }
+    .banner.err { background: #fee2e2; color: #991b1b; }
+    .subhead {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .subhead h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .profile-list {
+      display: grid;
+      gap: 10px;
+    }
+    .profile-item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      background: #fff;
+    }
+    .profile-meta {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .profile-title { font-weight: 800; }
+    .api-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .conn-badge {
+      border-radius: 999px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+    .conn-badge.ok {
+      background: #dcfce7;
+      color: #166534;
+      border-color: #bbf7d0;
+    }
+    .log {
+      background: #0f172a;
+      color: #cbd5e1;
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 280px;
+      max-height: 420px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .log-line.warn { color: #fbbf24; }
     .log-line.error { color: #f87171; }
+    .log-line.info { color: #93c5fd; }
     .log-line.found { color: #4ade80; font-weight: 700; }
-    .log-line.info  { color: #93c5fd; }
-    .log-empty { font-size: 12px; color: #475569; font-style: italic; }
-
-    /* ── Advanced section ── */
-    .adv-section { display: none; }
-    .adv-section.visible { display: flex; flex-direction: column; gap: 14px; }
-
-    /* ── Separator ── */
-    .sep { height: 1px; background: var(--line); margin: 4px 0; }
   </style>
 </head>
 <body>
-<div class="wrap">
-
-  <!-- Header -->
-  <div class="header">
-    <h1>RVSQ <span>Bot</span></h1>
-    <div class="mode-toggle" id="modeToggle" onclick="toggleAdvanced()">
-      <span class="gear">⚙️</span>
-      <span id="modeLabel">Mode avancé</span>
-    </div>
-  </div>
-
-  <!-- Bannières -->
-  <div id="foundBanner" class="banner found"><span class="banner-icon">🎉</span><span id="foundMsg"></span></div>
-  <div id="errorBanner" class="banner error"><span class="banner-icon">⚠️</span><span id="errorMsg"></span></div>
-
-  <!-- Statut + Backend URL -->
-  <div class="card">
-    <div class="card-title">Connexion backend</div>
-    <div class="url-row" style="margin-bottom:14px">
-      <input id="apiBase" placeholder="https://rvsq-web.onrender.com" />
-      <span class="url-badge err" id="connBadge">—</span>
-    </div>
-    <div class="status-bar">
-      <span class="dot" id="statusDot"></span>
-      <span class="status-text" id="statusText">Prêt</span>
-      <span class="status-action" id="lastAction"></span>
-    </div>
-  </div>
-
-  <!-- Profil essentiel -->
-  <div class="card">
-    <div class="card-title">Informations patient</div>
-    <div class="fields">
-      <div><label>Prénom</label><input id="firstName" autocomplete="given-name" /></div>
-      <div><label>Nom</label><input id="lastName" autocomplete="family-name" /></div>
-      <div class="full"><label>Numéro d'assurance maladie (NAM)</label><input id="nam" placeholder="XXXX 0000 0000" autocomplete="off" /></div>
-      <div><label>Séquence</label><input id="seq" placeholder="01" /></div>
-      <div><label>Date de naissance</label><input id="birthDate" placeholder="AAAA-MM-JJ" /></div>
-      <div><label>Sexe</label>
-        <select id="gender"><option value="M">Homme</option><option value="F">Femme</option></select>
+  <div class="app">
+    <div class="topbar">
+      <div>
+        <h1>RVSQ Bot</h1>
+        <div class="muted">Interface simplifiée</div>
       </div>
-      <div><label>Raison de consultation</label>
-        <select id="reasonCode">
-          <option value="urgent">Urgente</option>
-          <option value="semiurgent">Semi-urgente</option>
-          <option value="suivi">Suivi</option>
-        </select>
-      </div>
-      <div><label>Rayon de recherche</label>
-        <select id="perimeterKm">
-          <option value="10">10 km</option>
-          <option value="25">25 km</option>
-          <option value="50" selected>50 km</option>
-        </select>
+      <div class="status-chip">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Prêt</span>
+        <span class="muted" id="lastAction"></span>
       </div>
     </div>
-  </div>
 
-  <!-- Actions principales -->
-  <div class="card">
-    <div class="actions">
-      <button class="btn btn-primary" id="btnStart" onclick="startBot()">▶ Démarrer</button>
-      <button class="btn btn-stop" id="btnStop" onclick="stopBot()">■ Arrêter</button>
+    <div id="foundBanner" class="banner ok"></div>
+    <div id="errorBanner" class="banner err"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="pilot">Pilotage</button>
+      <button class="tab" data-tab="profiles">Profils</button>
+      <button class="tab" data-tab="settings">Réglages</button>
+      <button class="tab" data-tab="logs">Journal</button>
     </div>
-  </div>
 
-  <!-- ══════════ MODE AVANCÉ ══════════ -->
-  <div class="adv-section" id="advSection">
-
-    <!-- Options avancées -->
-    <div class="card">
-      <div class="card-title">Paramètres avancés</div>
-      <div class="fields">
-        <div><label>Code postal</label><input id="postalCode" placeholder="Auto si vide" /></div>
-        <div><label>Intervalle (secondes)</label><input id="intervalSeconds" type="number" min="2" value="5" /></div>
-        <div><label>Mode headless backend</label>
-          <select id="headless"><option value="true">Oui (serveur)</option><option value="false">Non (debug)</option></select>
+    <section class="panel active" id="panel-pilot">
+      <div class="card">
+        <div class="subhead"><h2>Patient actif</h2><span class="muted" id="activeProfileName">Profil non enregistré</span></div>
+        <div class="grid">
+          <div><label>Prénom</label><input id="firstName" autocomplete="given-name"></div>
+          <div><label>Nom</label><input id="lastName" autocomplete="family-name"></div>
+          <div class="full"><label>NAM</label><input id="nam" placeholder="XXXX 0000 0000"></div>
+          <div><label>Séquence</label><input id="seq" placeholder="01"></div>
+          <div><label>Date de naissance</label><input id="birthDate" placeholder="AAAA-MM-JJ"></div>
+          <div><label>Sexe</label><select id="gender"><option value="M">Homme</option><option value="F">Femme</option></select></div>
+          <div><label>Raison</label><select id="reasonCode"><option value="urgent">Urgente</option><option value="semiurgent">Semi-urgente</option><option value="suivi">Suivi</option></select></div>
+          <div><label>Rayon</label><select id="perimeterKm"><option value="10">10 km</option><option value="25">25 km</option><option value="50" selected>50 km</option></select></div>
         </div>
-        <div><label>Heures critiques</label>
-          <select id="critical"><option value="false">Non</option><option value="true">Oui</option></select>
+        <div class="actions">
+          <button class="btn-primary" id="btnStart">Démarrer</button>
+          <button class="btn-soft" id="btnPause">Pause</button>
+          <button class="btn-soft" id="btnResume">Reprendre</button>
+          <button class="btn-danger" id="btnStop">Arrêter</button>
+          <button class="btn-soft" id="btnSaveProfile">Sauvegarder le profil</button>
         </div>
-        <div><label>Durée plage critique (min)</label><input id="criticalMinutes" type="number" min="1" value="5" /></div>
       </div>
-    </div>
+    </section>
 
-    <!-- Actions avancées -->
-    <div class="card">
-      <div class="card-title">Contrôles</div>
-      <div class="actions">
-        <button class="btn btn-secondary btn-sm" onclick="pauseBot()">⏸ Pause</button>
-        <button class="btn btn-secondary btn-sm" onclick="resumeBot()">▶ Reprendre</button>
-        <button class="btn btn-secondary btn-sm" onclick="refreshStatus()">↻ Actualiser</button>
-        <button class="btn btn-secondary btn-sm" onclick="testNotification()">🔔 Test notif</button>
-        <button class="btn btn-secondary btn-sm" onclick="saveProfile()">💾 Enregistrer</button>
+    <section class="panel" id="panel-profiles">
+      <div class="card">
+        <div class="subhead"><h2>Profils sauvegardés</h2><button class="btn-soft" id="btnRefreshProfiles">Actualiser</button></div>
+        <div class="profile-list" id="profilesList"></div>
       </div>
-    </div>
+    </section>
 
-    <!-- Log temps réel -->
-    <div class="card">
-      <div class="card-title" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-        <span>Log en direct</span>
-        <button class="btn btn-secondary btn-sm" onclick="clearLog()">Effacer</button>
+    <section class="panel" id="panel-settings">
+      <div class="card">
+        <div class="subhead"><h2>Connexion backend</h2><span class="conn-badge" id="connBadge">Non connecté</span></div>
+        <div class="api-row">
+          <input id="apiBase" placeholder="https://rvsq-web.onrender.com">
+          <button class="btn-soft" id="btnReconnect">Reconnecter</button>
+        </div>
       </div>
-      <div class="log-wrap" id="logWrap">
-        <div class="log-empty" id="logEmpty">Aucun événement pour l'instant…</div>
+      <div class="card" style="margin-top:12px">
+        <div class="subhead"><h2>Recherche</h2></div>
+        <div class="grid-3">
+          <div><label>Code postal</label><input id="postalCode" placeholder="Auto si vide"></div>
+          <div><label>Intervalle</label><input id="intervalSeconds" type="number" min="2" value="5"></div>
+          <div><label>Mode headless</label><select id="headless"><option value="true">Oui</option><option value="false">Non</option></select></div>
+          <div><label>Heures critiques</label><select id="critical"><option value="false">Non</option><option value="true">Oui</option></select></div>
+          <div><label>Durée plage critique</label><input id="criticalMinutes" type="number" min="1" value="5"></div>
+        </div>
       </div>
-    </div>
+    </section>
 
+    <section class="panel" id="panel-logs">
+      <div class="card">
+        <div class="subhead"><h2>Journal en direct</h2><div><button class="btn-soft" id="btnClearLog">Effacer</button> <button class="btn-soft" id="btnRefreshStatus">Actualiser</button></div></div>
+        <div class="log" id="logWrap"></div>
+      </div>
+    </section>
   </div>
-  <!-- ══════════ FIN MODE AVANCÉ ══════════ -->
-
-</div>
 
 <script>
-// ── IDs persistés ───────────────────────────────────────────
 const PROFILE_IDS = ["firstName","lastName","nam","seq","birthDate","gender","reasonCode","perimeterKm","postalCode","intervalSeconds","headless","critical","criticalMinutes"];
 const inferredApi = (() => {
   const host = window.location.hostname || "";
@@ -244,115 +318,87 @@ const inferredApi = (() => {
 })();
 const defaultApi = inferredApi;
 let evtSource = null;
-let advancedMode = false;
+let currentProfileId = localStorage.getItem("currentProfileId") || "";
 
-// ── localStorage helpers ─────────────────────────────────────
-function getApiBase() { return (localStorage.getItem("apiBase") || document.getElementById("apiBase")?.value || "").trim() || defaultApi; }
-
-function saveLocal() {
-  localStorage.setItem("apiBase", document.getElementById("apiBase").value.trim());
-  const p = {};
-  PROFILE_IDS.forEach(id => { const el = document.getElementById(id); if (el) p[id] = el.value; });
-  localStorage.setItem("rvsqProfile", JSON.stringify(p));
-}
-
-function loadLocal() {
-  document.getElementById("apiBase").value = localStorage.getItem("apiBase") || defaultApi || "";
-  const p = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
-  PROFILE_IDS.forEach(id => { const el = document.getElementById(id); if (el && p[id] != null) el.value = p[id]; });
-  advancedMode = localStorage.getItem("advancedMode") === "true";
-  applyAdvancedMode();
-}
-
-// ── Advanced mode toggle ────────────────────────────────────
-function toggleAdvanced() {
-  advancedMode = !advancedMode;
-  localStorage.setItem("advancedMode", advancedMode);
-  applyAdvancedMode();
-}
-function applyAdvancedMode() {
-  document.getElementById("advSection").classList.toggle("visible", advancedMode);
-  document.getElementById("modeLabel").textContent = advancedMode ? "Mode simple" : "Mode avancé";
-}
-
-// ── Status display ───────────────────────────────────────────
-function setStatus(status, action) {
-  const map = { "En cours":"running", "Démarré":"running", "Repris":"running", "En pause":"paused", "Arrêté":"stopped", "Créneau trouvé":"found" };
-  const dot = document.getElementById("statusDot");
-  dot.className = "dot " + (map[status] || "");
-  document.getElementById("statusText").textContent = status || "Prêt";
-  if (action) document.getElementById("lastAction").textContent = action;
-
-  const btnStart = document.getElementById("btnStart");
-  const btnStop  = document.getElementById("btnStop");
-  const running = (status === "En cours" || status === "Démarré" || status === "Repris" || status === "En pause");
-  btnStart.disabled = running;
-  btnStop.disabled  = !running;
-}
-
-function setConnBadge(ok) {
-  const b = document.getElementById("connBadge");
-  b.textContent = ok ? "Connecté" : "Non connecté";
-  b.className = "url-badge " + (ok ? "" : "err");
-}
-
-// ── Banners ─────────────────────────────────────────────────
-function showFound(msg) {
-  document.getElementById("foundMsg").textContent = msg;
-  document.getElementById("foundBanner").classList.add("show");
-}
-function showError(msg) {
-  document.getElementById("errorMsg").textContent = msg;
-  document.getElementById("errorBanner").classList.add("show");
-}
-function clearBanners() {
-  document.getElementById("foundBanner").classList.remove("show");
-  document.getElementById("errorBanner").classList.remove("show");
-}
-
-// ── Log ─────────────────────────────────────────────────────
-function addLog(text, type) {
-  const wrap = document.getElementById("logWrap");
-  const empty = document.getElementById("logEmpty");
-  if (empty) empty.remove();
-  const line = document.createElement("div");
-  line.className = "log-line " + (type || "");
-  const ts = new Date().toLocaleTimeString("fr-CA");
-  line.textContent = `${ts}  ${text}`;
-  wrap.appendChild(line);
-  wrap.scrollTop = wrap.scrollHeight;
-  // Garde max 200 lignes
-  const lines = wrap.querySelectorAll(".log-line");
-  if (lines.length > 200) lines[0].remove();
-}
-function clearLog() {
-  const wrap = document.getElementById("logWrap");
-  wrap.innerHTML = '<div class="log-empty" id="logEmpty">Log effacé…</div>';
-}
-
-// ── API ──────────────────────────────────────────────────────
-function payloadProfile() {
+function $(id) { return document.getElementById(id); }
+function profilePayload() {
   const out = {};
-  PROFILE_IDS.forEach(id => { const el = document.getElementById(id); if (el) out[id] = el.value; });
+  for (const id of PROFILE_IDS) out[id] = $(id)?.value || "";
   return out;
 }
+function getApiBase() {
+  return ($("apiBase").value || localStorage.getItem("apiBase") || defaultApi).trim();
+}
+function saveLocal() {
+  localStorage.setItem("apiBase", $("apiBase").value.trim());
+  localStorage.setItem("rvsqProfileDraft", JSON.stringify(profilePayload()));
+  if (currentProfileId) localStorage.setItem("currentProfileId", currentProfileId);
+}
+function loadLocal() {
+  $("apiBase").value = localStorage.getItem("apiBase") || defaultApi;
+  const draft = JSON.parse(localStorage.getItem("rvsqProfileDraft") || "{}");
+  for (const id of PROFILE_IDS) if ($(id) && draft[id] != null) $(id).value = draft[id];
+  refreshActiveProfileName();
+}
+function refreshActiveProfileName(profile) {
+  const p = profile || JSON.parse(localStorage.getItem("rvsqProfileDraft") || "{}");
+  const name = [p.firstName, p.lastName].filter(Boolean).join(" ").trim();
+  $("activeProfileName").textContent = name || "Profil non enregistré";
+}
+function setConnBadge(ok) {
+  const el = $("connBadge");
+  el.textContent = ok ? "Connecté" : "Non connecté";
+  el.className = "conn-badge" + (ok ? " ok" : "");
+}
+function setStatus(status, action) {
+  const map = { "En cours":"running", "Démarré":"running", "Repris":"running", "En pause":"paused", "Arrêté":"stopped", "Créneau trouvé":"found" };
+  $("statusDot").className = "dot " + (map[status] || "");
+  $("statusText").textContent = status || "Prêt";
+  $("lastAction").textContent = action || "";
+  const running = ["En cours", "Démarré", "Repris", "En pause"].includes(status);
+  $("btnStart").disabled = running;
+  $("btnStop").disabled = !running;
+}
+function showBanner(id, message) {
+  const el = $(id);
+  el.textContent = message;
+  el.classList.add("show");
+}
+function clearBanners() {
+  $("foundBanner").classList.remove("show");
+  $("errorBanner").classList.remove("show");
+}
+function addLog(text, type = "") {
+  const line = document.createElement("div");
+  line.className = "log-line " + type;
+  line.textContent = `${new Date().toLocaleTimeString("fr-CA")}  ${text}`;
+  $("logWrap").appendChild(line);
+  $("logWrap").scrollTop = $("logWrap").scrollHeight;
+  const lines = $("logWrap").querySelectorAll(".log-line");
+  if (lines.length > 250) lines[0].remove();
+}
+function clearLog() { $("logWrap").innerHTML = ""; }
 
 async function api(path, method = "GET", body) {
+  saveLocal();
   try {
     const res = await fetch(getApiBase() + path, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? JSON.stringify(body) : undefined
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       addLog(`Erreur API ${path}: ${data.error || data.message || res.status}`, "error");
+      showBanner("errorBanner", data.error || data.message || `Erreur ${res.status}`);
       return null;
     }
+    setConnBadge(true);
     return data;
   } catch (err) {
-    addLog(`Erreur API ${path}: ${err.message}`, "error");
     setConnBadge(false);
+    addLog(`Erreur API ${path}: ${err.message}`, "error");
+    showBanner("errorBanner", err.message);
     return null;
   }
 }
@@ -360,55 +406,78 @@ async function api(path, method = "GET", body) {
 async function refreshStatus() {
   const data = await api("/status");
   if (!data) return;
-  setConnBadge(true);
   setStatus(data.status, data.state?.lastAction || "");
 }
 
 async function saveProfile() {
+  clearBanners();
+  const data = await api("/profiles/save", "POST", { profile: profilePayload() });
+  if (!data) return;
+  currentProfileId = data.profileId || currentProfileId;
+  localStorage.setItem("currentProfileId", currentProfileId);
+  addLog("Profil sauvegardé", "info");
+  refreshActiveProfileName(data.profile || profilePayload());
+  await loadProfiles();
+}
+
+async function loadProfiles() {
+  const data = await api("/profiles");
+  if (!data) return;
+  const items = data.items || [];
+  const wrap = $("profilesList");
+  wrap.innerHTML = "";
+  if (!items.length) {
+    wrap.innerHTML = '<div class="muted">Aucun profil sauvegardé</div>';
+    return;
+  }
+  for (const item of items) {
+    const box = document.createElement("div");
+    box.className = "profile-item";
+    const title = [item.firstName, item.lastName].filter(Boolean).join(" ") || item.id || "Profil";
+    const date = item.savedAt ? new Date(item.savedAt).toLocaleString("fr-CA") : "";
+    box.innerHTML = `
+      <div>
+        <div class="profile-title">${escapeHtml(title)}</div>
+        <div class="profile-meta">NAM: ${escapeHtml(item.nam || "")} | Dernière sauvegarde: ${escapeHtml(date)}</div>
+      </div>
+      <div><button class="btn-soft" data-load-id="${escapeAttr(item.id || "")}">Charger</button></div>`;
+    wrap.appendChild(box);
+  }
+}
+
+function applyProfile(profile) {
+  for (const id of PROFILE_IDS) if ($(id) && profile[id] != null) $(id).value = profile[id];
+  currentProfileId = profile.id || currentProfileId;
   saveLocal();
-  await api("/profiles/save", "POST", { profile: payloadProfile() });
-  addLog("Profil enregistré", "info");
+  refreshActiveProfileName(profile);
+  addLog(`Profil chargé: ${(profile.firstName || "") + " " + (profile.lastName || "")}`.trim(), "info");
+  activateTab("pilot");
 }
 
 async function startBot() {
-  clearBanners(); saveLocal();
-  const data = await api("/start", "POST", { profile: payloadProfile() });
+  clearBanners();
+  const data = await api("/start", "POST", { profile: profilePayload() });
   if (!data) return;
-  setConnBadge(true);
   setStatus(data.status, data.state?.lastAction || data.note || "");
   addLog("Démarrage demandé", "info");
 }
-
 async function stopBot() {
   const data = await api("/stop", "POST");
   if (!data) return;
   setStatus(data.status, data.state?.lastAction || "");
   addLog("Arrêt demandé", "info");
 }
-
 async function pauseBot() {
   const data = await api("/pause", "POST");
   if (!data) return;
   setStatus(data.status, data.state?.lastAction || "");
 }
-
 async function resumeBot() {
   const data = await api("/resume", "POST");
   if (!data) return;
   setStatus(data.status, data.state?.lastAction || "");
 }
 
-function testNotification() {
-  if (!("Notification" in window)) { alert("Notifications non supportées"); return; }
-  if (Notification.permission === "granted") {
-    new Notification("RVSQ Bot", { body: "Test de notification ✓" }); return;
-  }
-  Notification.requestPermission().then(p => {
-    if (p === "granted") new Notification("RVSQ Bot", { body: "Notifications activées ✓" });
-  });
-}
-
-// ── SSE Events ───────────────────────────────────────────────
 function connectEvents() {
   if (evtSource) evtSource.close();
   evtSource = new EventSource(getApiBase() + "/events");
@@ -418,38 +487,62 @@ function connectEvents() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.kind === "status") setStatus(msg.status, msg.lastAction || "");
-      if (msg.kind === "log")    addLog(msg.message, msg.type || "");
-      if (msg.kind === "error")  { addLog(msg.message, "error"); showError(msg.message); }
-      if (msg.kind === "found")  {
+      if (msg.kind === "log") addLog(msg.message, msg.type || "");
+      if (msg.kind === "error") {
+        addLog(msg.message, "error");
+        showBanner("errorBanner", msg.message);
+      }
+      if (msg.kind === "found") {
         addLog(msg.message, "found");
-        showFound(msg.message);
-        if ("Notification" in window && Notification.permission === "granted")
+        showBanner("foundBanner", msg.message);
+        if ("Notification" in window && Notification.permission === "granted") {
           new Notification("RVSQ Bot", { body: msg.message });
+        }
       }
     } catch (_) {}
   };
 }
 
-// ── Reconnect SSE si l'URL du backend change ─────────────────
-document.getElementById("apiBase").addEventListener("change", () => {
-  saveLocal();
-  connectEvents();
-  refreshStatus();
-});
-
-document.addEventListener("change", e => {
-  if (e.target.id !== "apiBase") saveLocal();
-});
-
-// ── Init ─────────────────────────────────────────────────────
-loadLocal();
-if (getApiBase()) {
-  connectEvents();
-  refreshStatus();
-} else {
-  setConnBadge(false);
-  addLog("Entre l'URL du backend Render dans le champ ci-dessus.", "warn");
+function activateTab(name) {
+  document.querySelectorAll(".tab").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach(panel => panel.classList.remove("active"));
+  $("panel-" + name).classList.add("active");
 }
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function escapeAttr(value) { return escapeHtml(value); }
+
+document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
+$("btnStart").addEventListener("click", startBot);
+$("btnStop").addEventListener("click", stopBot);
+$("btnPause").addEventListener("click", pauseBot);
+$("btnResume").addEventListener("click", resumeBot);
+$("btnSaveProfile").addEventListener("click", saveProfile);
+$("btnRefreshProfiles").addEventListener("click", loadProfiles);
+$("btnReconnect").addEventListener("click", () => { connectEvents(); refreshStatus(); });
+$("btnClearLog").addEventListener("click", clearLog);
+$("btnRefreshStatus").addEventListener("click", refreshStatus);
+$("profilesList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-load-id]");
+  if (!btn) return;
+  const data = await api("/profiles");
+  if (!data) return;
+  const profile = (data.items || []).find(item => item.id === btn.dataset.loadId);
+  if (profile) applyProfile(profile);
+});
+document.addEventListener("change", (e) => {
+  if (PROFILE_IDS.includes(e.target.id) || e.target.id === "apiBase") {
+    saveLocal();
+    refreshActiveProfileName(profilePayload());
+  }
+});
+
+loadLocal();
+connectEvents();
+refreshStatus();
+loadProfiles();
 </script>
 </body>
 </html>

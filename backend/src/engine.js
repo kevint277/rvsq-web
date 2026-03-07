@@ -152,48 +152,37 @@ export class BrowserEngine {
     if (await this.isCloudflareChallenge()) {
       const passed = await this.waitForCloudflare(30000);
       if (!passed) {
-        emit("error", "Cloudflare n'a pas pu être contourné (timeout)."); await this.stop(); return false;
+        emit("error", "Cloudflare n'a pas pu être contourné (timeout).");
+        await this.stop();
+        return false;
       }
     }
 
-    // Dump des inputs pour diagnostic
     const inputs = await this.page.evaluate(() =>
-      [...document.querySelectorAll("input")].map(i => ({ name: i.name, id: i.id, type: i.type, value: i.value?.slice(0,20) }))
+      [...document.querySelectorAll("input")].map(i => ({ name: i.name, id: i.id, type: i.type, value: i.value?.slice(0, 20) }))
     ).catch(() => []);
-    emit("log", `Inputs trouvés: ${JSON.stringify(inputs.filter(i => i.name && i.type !== "hidden").slice(0, 10))}`);
+    emit("log", `Inputs trouvés: ${JSON.stringify(inputs.filter(i => i.name && i.type !== "hidden").slice(0, 15))}`);
 
     const { day, month, year } = birthParts(profile.birthDate);
 
-    // Remplit les champs avec les vrais noms (confirmés par HAR)
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_FirstName", profile.firstName);
-    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_LastName",  profile.lastName);
-    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_NAM",       this.normalizeNam(profile.nam || ""));
+    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_LastName", profile.lastName);
+    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_NAM", this.normalizeNam(profile.nam || ""));
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_CardSeqNumber", profile.seq);
-    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Day",       day);
-    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Year",      year);
+    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Day", day);
+    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Year", year);
 
-    // Mois - certains écrans utilisent un select, d'autres un input/hidden
-    await this.page.locator(`[name="ctl00$ContentPlaceHolderMP$AssureForm_Month"]`)
-      .selectOption(month).catch(() => {});
+    await this.page.locator(`[name="ctl00$ContentPlaceHolderMP$AssureForm_Month"]`).selectOption(month).catch(() => {});
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Month", month);
-    await this.fillByName("AssureForm_Month_hidden", month);
+    await this.fillByName("AssureForm_Month_hidden", "");
 
-    // Sexe (radio)
     if (profile.gender === "F") {
       await this.page.locator("[id*='FemaleGender']").first().check().catch(() => {});
     } else {
       await this.page.locator("[id*='MaleGender']").first().check().catch(() => {});
     }
 
-    // Honeypot — forcer vide (au cas où le JS les pré-remplit)
-    for (const hp of ["ctlhp0$fullName","ctlhp2$name","ctlhp3$nam","ctlhp4$username","ctlhp6$patientId"]) {
-      await this.page.evaluate((n) => {
-        const el = document.querySelector(`[name="${n}"]`);
-        if (el) el.value = "";
-      }, hp).catch(() => {});
-    }
-
-    emit("log", "Formulaire rempli — soumission...");
+    await this.clearHoneyPots();
 
     const snapshot = await this.page.evaluate(() => {
       const data = {};
@@ -210,65 +199,25 @@ export class BrowserEngine {
         const el = document.querySelector(`[name="${name}"]`);
         if (el) data[name] = el.value;
       }
+      data.__honeyPots = [...document.querySelectorAll('input[name^="ctlhp"], textarea[name^="ctlhp"]')].map(el => ({ name: el.name, value: el.value }));
       return data;
     }).catch(() => ({}));
     emit("log", `Valeurs auth préparées: ${JSON.stringify(snapshot)}`);
+    emit("log", "Formulaire rempli - soumission...");
 
-    const submitSelectors = [
-      "button[type='submit']",
-      "input[type='submit']",
-      "#btnSubmit",
-      "[id*='btnSubmit']",
-      "[name*='btnSubmit']",
-      "[id*='Continuer']",
-      "[name*='Continuer']",
-      "button:has-text('Continuer')",
-      "input[value*='Continuer']"
-    ];
-
-    let submitted = null;
-    for (const selector of submitSelectors) {
-      const locator = this.page.locator(selector).first();
-      if (await locator.count().catch(() => 0)) {
-        const visible = await locator.isVisible().catch(() => false);
-        if (!visible) continue;
-        emit("log", `Soumission via ${selector}`);
-        await Promise.all([
-          this.page.waitForURL(url => url.includes(siteConfig.rechercheUrlPart), { timeout: 30000 }).catch(() => null),
-          locator.click({ delay: 80 }).catch(() => null)
-        ]);
-        submitted = selector;
-        break;
-      }
+    let submitResult = await this.trySubmitByClick();
+    if (!submitResult?.reachedSearch) {
+      emit("log", "Clic de soumission insuffisant, fallback POST ASP.NET...", { type: "warn" });
+      submitResult = await this.submitAspNetForm();
     }
 
-    if (!submitted) {
-      emit("log", "Aucun bouton de soumission fiable trouvé, fallback form.requestSubmit()", { type: "warn" });
-      submitted = await this.page.evaluate(() => {
-        const form = document.querySelector("form");
-        if (!form) return null;
-        if (typeof form.requestSubmit === "function") {
-          form.requestSubmit();
-          return "form.requestSubmit";
-        }
-        form.submit();
-        return "form.submit";
-      }).catch(() => null);
-      await this.page.waitForURL(url => url.includes(siteConfig.rechercheUrlPart), { timeout: 30000 })
-        .catch(async () => {
-          await this.page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
-        });
-    }
-    emit("log", `Submit: ${submitted}`);
-
+    emit("log", `Submit: ${submitResult?.method || "aucun"}`);
     const finalUrl = this.page.url();
     emit("log", `Après auth: ${finalUrl}`);
 
     if (!finalUrl.includes(siteConfig.rechercheUrlPart)) {
-      // Cherche un message d'erreur visible
-      const errText = await this.page.locator(".error, .alert, [class*='error'], [class*='alert']")
-        .first().innerText().catch(() => "");
-      emit("error", `Page de recherche non atteinte.${errText ? ` Message: "${errText}"` : " Vérifier les informations patient."}`);
+      const errorDetails = await this.getPageValidationErrors();
+      emit("error", `Page de recherche non atteinte.${errorDetails ? ` Message: "${errorDetails}"` : " Vérifier les informations patient."}`);
       return false;
     }
 
@@ -464,6 +413,138 @@ export class BrowserEngine {
     this.page = null; this.context = null; this.browser = null;
     emit("status", "Arrêté", { status: "Arrêté", lastAction: runtime.lastAction });
     emit("log", "Moteur arrêté");
+  }
+
+  async trySubmitByClick() {
+    const submitSelectors = [
+      "button[type='submit']",
+      "input[type='submit']",
+      "button[id*='btn']",
+      "input[id*='btn']",
+      "button[class*='btn']",
+      "input[value*='Continuer']",
+      "button:has-text('Continuer')"
+    ];
+
+    for (const selector of submitSelectors) {
+      const locator = this.page.locator(selector).first();
+      const count = await locator.count().catch(() => 0);
+      if (!count) continue;
+      const visible = await locator.isVisible().catch(() => false);
+      if (!visible) continue;
+      emit("log", `Soumission via ${selector}`);
+      await locator.click({ delay: 80 }).catch(() => null);
+      const reachedSearch = await this.waitForRecherche();
+      if (reachedSearch) return { method: `click:${selector}`, reachedSearch: true };
+    }
+    return { method: "click:none", reachedSearch: false };
+  }
+
+  async submitAspNetForm() {
+    const payload = await this.page.evaluate(() => {
+      const form = document.querySelector("form");
+      if (!form) return null;
+      const fields = [];
+      for (const el of form.querySelectorAll("input, select, textarea")) {
+        if (!el.name || el.disabled) continue;
+        const type = (el.type || "").toLowerCase();
+        if (type === "file") continue;
+        if ((type === "checkbox" || type === "radio") && !el.checked) continue;
+        let value = el.value ?? "";
+        if (el.name.startsWith("ctlhp")) value = "";
+        fields.push([el.name, value]);
+      }
+      const submitter = form.querySelector("button[type='submit'], input[type='submit'], button, input[type='button']");
+      if (submitter?.name) {
+        fields.push([submitter.name, submitter.value || submitter.innerText || ""]);
+      }
+      return {
+        action: form.action || window.location.href,
+        method: (form.method || "POST").toUpperCase(),
+        fields
+      };
+    }).catch(() => null);
+
+    if (!payload?.action) {
+      return { method: "aspnet-post:none", reachedSearch: false };
+    }
+
+    emit("log", `POST direct vers ${payload.action}`);
+
+    const postResult = await this.page.evaluate(async ({ action, method, fields }) => {
+      const body = new URLSearchParams();
+      for (const [k, v] of fields) body.append(k, v ?? "");
+      const res = await fetch(action, {
+        method,
+        credentials: "include",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-requested-with": "XMLHttpRequest"
+        },
+        body: body.toString(),
+        redirect: "follow"
+      });
+      const text = await res.text().catch(() => "");
+      return { ok: res.ok, status: res.status, url: res.url, text: text.slice(0, 1200) };
+    }, payload).catch(err => ({ ok: false, status: 0, url: "", text: err.message || String(err) }));
+
+    emit("log", `POST auth: status ${postResult.status} | url ${postResult.url || "?"}`);
+
+    if (postResult.url && postResult.url.includes(siteConfig.rechercheUrlPart)) {
+      await this.page.goto(postResult.url, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => null);
+    } else {
+      await this.page.goto(siteConfig.rechercheUrl, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => null);
+    }
+
+    const reachedSearch = await this.waitForRecherche();
+    if (!reachedSearch && postResult.text) {
+      emit("log", `Réponse auth: ${postResult.text.replace(/\s+/g, " ").slice(0, 500)}`, { type: "warn" });
+    }
+    return { method: "aspnet-post", reachedSearch };
+  }
+
+  async waitForRecherche() {
+    try {
+      await this.page.waitForURL(url => url.includes(siteConfig.rechercheUrlPart), { timeout: 12000 });
+      return true;
+    } catch (_) {
+      await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      return this.page.url().includes(siteConfig.rechercheUrlPart);
+    }
+  }
+
+  async clearHoneyPots() {
+    await this.page.evaluate(() => {
+      for (const el of document.querySelectorAll('input[name^="ctlhp"], textarea[name^="ctlhp"], select[name^="ctlhp"]')) {
+        try {
+          el.value = "";
+          if (el.type === "checkbox" || el.type === "radio") el.checked = false;
+        } catch (_) {}
+      }
+    }).catch(() => {});
+  }
+
+  async getPageValidationErrors() {
+    const details = await this.page.evaluate(() => {
+      const texts = [];
+      const selectors = [
+        ".validation-summary-errors",
+        ".field-validation-error",
+        ".error",
+        ".alert",
+        "[class*='error']",
+        "[class*='alert']",
+        "[role='alert']"
+      ];
+      for (const selector of selectors) {
+        for (const el of document.querySelectorAll(selector)) {
+          const t = (el.innerText || el.textContent || "").trim();
+          if (t) texts.push(t);
+        }
+      }
+      return [...new Set(texts)].join(" | ").slice(0, 500);
+    }).catch(() => "");
+    return details;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

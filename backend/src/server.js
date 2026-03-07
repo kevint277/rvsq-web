@@ -50,7 +50,7 @@ app.get("/profiles", (req, res) => {
 app.post("/profiles/save", (req, res) => {
   const profile = req.body?.profile || {};
   const id = saveProfile(profile);
-  res.json({ ok: true, profileId: id, message: "Profil sauvegardé" });
+  res.json({ ok: true, profileId: id, profile: getProfiles().find(p => p.id === id) || null, message: "Profil sauvegardé" });
 });
 
 app.post("/start", async (req, res) => {

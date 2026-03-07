@@ -62,7 +62,10 @@ export function getHistory() {
   return readDb().history;
 }
 export function getProfiles() {
-  return Object.values(readDb().profiles);
+  const profiles = readDb().profiles || {};
+  return Object.entries(profiles)
+    .map(([id, profile]) => ({ id, ...profile }))
+    .sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
 }
 export function addSession(session) {
   const db = readDb();
