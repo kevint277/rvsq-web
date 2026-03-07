@@ -140,7 +140,7 @@
   <div class="card">
     <div class="card-title">Connexion backend</div>
     <div class="url-row" style="margin-bottom:14px">
-      <input id="apiBase" placeholder="https://ton-backend.onrender.com" />
+      <input id="apiBase" placeholder="https://rvsq-web.onrender.com" />
       <span class="url-badge err" id="connBadge">—</span>
     </div>
     <div class="status-bar">
@@ -237,12 +237,17 @@
 <script>
 // ── IDs persistés ───────────────────────────────────────────
 const PROFILE_IDS = ["firstName","lastName","nam","seq","birthDate","gender","reasonCode","perimeterKm","postalCode","intervalSeconds","headless","critical","criticalMinutes"];
-const defaultApi = "http://localhost:3000";
+const inferredApi = (() => {
+  const host = window.location.hostname || "";
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:3000";
+  return "https://rvsq-web.onrender.com";
+})();
+const defaultApi = inferredApi;
 let evtSource = null;
 let advancedMode = false;
 
 // ── localStorage helpers ─────────────────────────────────────
-function getApiBase() { return (localStorage.getItem("apiBase") || "").trim() || defaultApi; }
+function getApiBase() { return (localStorage.getItem("apiBase") || document.getElementById("apiBase")?.value || "").trim() || defaultApi; }
 
 function saveLocal() {
   localStorage.setItem("apiBase", document.getElementById("apiBase").value.trim());
@@ -252,7 +257,7 @@ function saveLocal() {
 }
 
 function loadLocal() {
-  document.getElementById("apiBase").value = localStorage.getItem("apiBase") || "";
+  document.getElementById("apiBase").value = localStorage.getItem("apiBase") || defaultApi || "";
   const p = JSON.parse(localStorage.getItem("rvsqProfile") || "{}");
   PROFILE_IDS.forEach(id => { const el = document.getElementById(id); if (el && p[id] != null) el.value = p[id]; });
   advancedMode = localStorage.getItem("advancedMode") === "true";
@@ -339,7 +344,11 @@ async function api(path, method = "GET", body) {
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      addLog(`Erreur API ${path}: ${data.error || data.message || res.status}`, "error");
+      return null;
+    }
     return data;
   } catch (err) {
     addLog(`Erreur API ${path}: ${err.message}`, "error");
@@ -434,8 +443,13 @@ document.addEventListener("change", e => {
 
 // ── Init ─────────────────────────────────────────────────────
 loadLocal();
-connectEvents();
-refreshStatus();
+if (getApiBase()) {
+  connectEvents();
+  refreshStatus();
+} else {
+  setConnBadge(false);
+  addLog("Entre l'URL du backend Render dans le champ ci-dessus.", "warn");
+}
 </script>
 </body>
 </html>

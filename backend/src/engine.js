@@ -99,7 +99,7 @@ export class BrowserEngine {
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
       viewport: { width: 1280, height: 800 },
       locale: "fr-CA",
-      timezoneId: "America/Toronto",
+      timezoneId: "America/Montreal",
       extraHTTPHeaders: { "Accept-Language": "fr-CA,fr;q=0.9,en-CA;q=0.8,en;q=0.7" },
     });
     await this.context.addInitScript(STEALTH_SCRIPT);
@@ -146,6 +146,7 @@ export class BrowserEngine {
     emit("log", "Ouverture de Principale.aspx...");
 
     await this.page.goto(siteConfig.homeUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await this.page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
     emit("log", `URL: ${this.page.url()} | Titre: ${await this.page.title()}`);
 
     if (await this.isCloudflareChallenge()) {
@@ -166,14 +167,16 @@ export class BrowserEngine {
     // Remplit les champs avec les vrais noms (confirmés par HAR)
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_FirstName", profile.firstName);
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_LastName",  profile.lastName);
-    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_NAM",       (profile.nam || "").replace(/\s/g, ""));
+    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_NAM",       this.normalizeNam(profile.nam || ""));
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_CardSeqNumber", profile.seq);
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Day",       day);
     await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Year",      year);
 
-    // Mois (select)
+    // Mois - certains écrans utilisent un select, d'autres un input/hidden
     await this.page.locator(`[name="ctl00$ContentPlaceHolderMP$AssureForm_Month"]`)
       .selectOption(month).catch(() => {});
+    await this.fillByName("ctl00$ContentPlaceHolderMP$AssureForm_Month", month);
+    await this.fillByName("AssureForm_Month_hidden", month);
 
     // Sexe (radio)
     if (profile.gender === "F") {
@@ -192,24 +195,71 @@ export class BrowserEngine {
 
     emit("log", "Formulaire rempli — soumission...");
 
-    // Soumission : submit via JS pour éviter les ambiguïtés de clic
-    const submitted = await this.page.evaluate(() => {
-      const form = document.querySelector("form");
-      if (!form) return false;
-      // Cherche le vrai bouton submit (pas les honeypots)
-      const btn = form.querySelector(
-        "input[type='submit']:not([name^='ctlhp']), button[type='submit']:not([name^='ctlhp'])"
-      );
-      if (btn) { btn.click(); return "click:" + (btn.name || btn.id); }
-      form.submit(); return "form.submit";
-    }).catch(() => null);
-    emit("log", `Submit: ${submitted}`);
+    const snapshot = await this.page.evaluate(() => {
+      const data = {};
+      for (const name of [
+        "ctl00$ContentPlaceHolderMP$AssureForm_FirstName",
+        "ctl00$ContentPlaceHolderMP$AssureForm_LastName",
+        "ctl00$ContentPlaceHolderMP$AssureForm_NAM",
+        "ctl00$ContentPlaceHolderMP$AssureForm_CardSeqNumber",
+        "ctl00$ContentPlaceHolderMP$AssureForm_Day",
+        "ctl00$ContentPlaceHolderMP$AssureForm_Month",
+        "AssureForm_Month_hidden",
+        "ctl00$ContentPlaceHolderMP$AssureForm_Year"
+      ]) {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (el) data[name] = el.value;
+      }
+      return data;
+    }).catch(() => ({}));
+    emit("log", `Valeurs auth préparées: ${JSON.stringify(snapshot)}`);
 
-    // Attend la navigation vers Recherche.aspx
-    await this.page.waitForURL(url => url.includes(siteConfig.rechercheUrlPart), { timeout: 30000 })
-      .catch(async () => {
-        await this.page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
-      });
+    const submitSelectors = [
+      "button[type='submit']",
+      "input[type='submit']",
+      "#btnSubmit",
+      "[id*='btnSubmit']",
+      "[name*='btnSubmit']",
+      "[id*='Continuer']",
+      "[name*='Continuer']",
+      "button:has-text('Continuer')",
+      "input[value*='Continuer']"
+    ];
+
+    let submitted = null;
+    for (const selector of submitSelectors) {
+      const locator = this.page.locator(selector).first();
+      if (await locator.count().catch(() => 0)) {
+        const visible = await locator.isVisible().catch(() => false);
+        if (!visible) continue;
+        emit("log", `Soumission via ${selector}`);
+        await Promise.all([
+          this.page.waitForURL(url => url.includes(siteConfig.rechercheUrlPart), { timeout: 30000 }).catch(() => null),
+          locator.click({ delay: 80 }).catch(() => null)
+        ]);
+        submitted = selector;
+        break;
+      }
+    }
+
+    if (!submitted) {
+      emit("log", "Aucun bouton de soumission fiable trouvé, fallback form.requestSubmit()", { type: "warn" });
+      submitted = await this.page.evaluate(() => {
+        const form = document.querySelector("form");
+        if (!form) return null;
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+          return "form.requestSubmit";
+        }
+        form.submit();
+        return "form.submit";
+      }).catch(() => null);
+      await this.page.waitForURL(url => url.includes(siteConfig.rechercheUrlPart), { timeout: 30000 })
+        .catch(async () => {
+          await this.page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+        });
+    }
+    emit("log", `Submit: ${submitted}`);
 
     const finalUrl = this.page.url();
     emit("log", `Après auth: ${finalUrl}`);
@@ -417,6 +467,12 @@ export class BrowserEngine {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  normalizeNam(value) {
+    const raw = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (raw.length >= 12) return `${raw.slice(0,4)} ${raw.slice(4,8)} ${raw.slice(8,12)}`;
+    return String(value || "").trim().toUpperCase();
+  }
 
   async fillByName(name, value) {
     if (!value) return;
