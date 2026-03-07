@@ -234,21 +234,70 @@ export class BrowserEngine {
     emit("status", "En cours", { status: "En cours", lastAction: runtime.lastAction });
     emit("log", "Chargement des raisons de consultation...");
 
-    // Fetch exécuté DANS le browser — même session, même cookies, même origin
+    await this.page.waitForURL(url => url.includes(siteConfig.rechercheUrlPart), { timeout: 15000 }).catch(() => {});
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+    await this.page.waitForTimeout(1800);
+
+    const domSnapshot = await this.page.evaluate(() => ({
+      title: document.title,
+      url: location.href,
+      selects: [...document.querySelectorAll("select")].map(el => ({ name: el.name, id: el.id, options: el.options.length })),
+      buttons: [...document.querySelectorAll("button, input[type='button'], input[type='submit']")].slice(0, 12).map(el => ({
+        name: el.name || "",
+        id: el.id || "",
+        value: el.value || el.innerText || ""
+      }))
+    })).catch(() => null);
+    if (domSnapshot) emit("log", `Recherche DOM: ${JSON.stringify(domSnapshot)}`);
+
     const result = await this.page.evaluate(async (baseUrl) => {
-      const ts = Date.now();
-      const res = await fetch(
-        `${baseUrl}/api2/activelinkedconsultationReasons?{"ajaxTimeStamp":${ts}}&_=${ts - 200}`,
-        { headers: { "content-type": "application/json; charset=utf-8" } }
-      );
-      return { status: res.status, data: await res.json().catch(() => null) };
+      const mkHeaders = () => ({
+        "accept": "application/json, text/javascript, */*; q=0.01",
+        "content-type": "application/json; charset=utf-8",
+        "x-requested-with": "XMLHttpRequest"
+      });
+      const getJson = async (url) => {
+        const res = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+          headers: mkHeaders(),
+          referrer: `${baseUrl}/prendrerendezvous/Recherche.aspx`
+        });
+        const text = await res.text().catch(() => "");
+        let data = null;
+        try { data = JSON.parse(text); } catch (_) {}
+        return { status: res.status, url: res.url, text: text.slice(0, 600), data };
+      };
+
+      const ts1 = Date.now();
+      const warmups = [];
+      warmups.push(await getJson(`${baseUrl}/api2/ConfigValues?{"cancelLimit":1440,"ajaxTimeStamp":${ts1}}&_=${ts1 - 210}`));
+      const ts2 = Date.now() + 1;
+      warmups.push(await getJson(`${baseUrl}/api2//assure/CurrentFipa?{"NAM":"","lastName":"","firstName":"","gender":"","birthDate":"","cardSeqNumber":"","ajaxTimeStamp":${ts2}}&_=${ts2 - 210}`));
+      const ts3 = Date.now() + 2;
+      let reasons = await getJson(`${baseUrl}/api2/activelinkedconsultationReasons?{"ajaxTimeStamp":${ts3}}&_=${ts3 - 210}`);
+      if (reasons.status === 403 || reasons.status === 401) {
+        await new Promise(r => setTimeout(r, 1500));
+        const ts4 = Date.now() + 3;
+        reasons = await getJson(`${baseUrl}/api2/activelinkedconsultationReasons?{"ajaxTimeStamp":${ts4}}&_=${ts4 - 210}`);
+      }
+      return { warmups, reasons };
     }, siteConfig.baseUrl).catch(e => { emit("error", `Raisons: ${e.message}`); return null; });
 
-    if (!result?.data) {
-      emit("error", "Impossible de charger les raisons de consultation."); return false;
+    if (result?.warmups) {
+      for (const w of result.warmups) emit("log", `Warmup API: ${w.url} -> ${w.status}`);
+    }
+    if (result?.reasons) emit("log", `Raisons API: ${result.reasons.url} -> ${result.reasons.status}`);
+
+    const reasonsPayload = result?.reasons?.data;
+    if (!reasonsPayload) {
+      const pageErrors = await this.getPageValidationErrors();
+      emit("error", `Impossible de charger les raisons de consultation.${pageErrors ? ` Message page: "${pageErrors}"` : ""}`);
+      if (result?.reasons?.text) emit("log", `Raisons réponse: ${result.reasons.text}`, { type: "warn" });
+      return false;
     }
 
-    const reasons = result.data.consultationReasons || [];
+    const reasons = reasonsPayload.consultationReasons || [];
     emit("log", `${reasons.length} raison(s) disponible(s)`);
 
     const targetLabel = siteConfig.reasonMap[profile.reasonCode] || siteConfig.reasonMap.urgent;
