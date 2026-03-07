@@ -57,12 +57,20 @@ export class BrowserEngine {
     this.profile   = null;
     this.reasonUid = null;
     this.searchBase = {};
+    this.stopping = false;
   }
 
   // ── Démarrage ─────────────────────────────────────────────────────────────
 
   async start(profile) {
+    if (this.stopping) throw new Error("Arrêt en cours, réessaie dans un instant.");
+    if (this.browser || this.context || this.page) {
+      emit("log", "Instance précédente détectée - nettoyage...", { type: "warn" });
+      await this.stop().catch(() => {});
+    }
     this.profile = profile;
+    this.reasonUid = null;
+    this.searchBase = {};
     runtime.running    = true;
     runtime.paused     = false;
     runtime.startedAt  = new Date().toISOString();
@@ -440,28 +448,38 @@ export class BrowserEngine {
   // ── Contrôles ────────────────────────────────────────────────────────────
 
   async pause() {
+    if (!runtime.running || !this.page) throw new Error("Aucun moteur actif à mettre en pause.");
     runtime.paused = true; runtime.lastAction = "En pause";
     emit("status", "En pause", { status: "En pause", lastAction: runtime.lastAction });
     emit("log", "Moteur en pause");
   }
 
   async resume() {
+    if (!runtime.running || !runtime.paused || !this.page) {
+      throw new Error("Le moteur ne peut pas être repris dans l'état actuel.");
+    }
     runtime.running = true; runtime.paused = false; runtime.lastAction = "Repris";
     emit("status", "En cours", { status: "En cours", lastAction: runtime.lastAction });
     emit("log", "Moteur repris");
   }
 
   async stop() {
-    runtime.running = false; runtime.paused = false;
-    runtime.lastAction = "Arrêté"; runtime.step = "stopped";
-    if (this.loopTimer) clearInterval(this.loopTimer);
-    this.loopTimer = null;
-    if (this.page)    await this.page.close().catch(() => {});
-    if (this.context) await this.context.close().catch(() => {});
-    if (this.browser) await this.browser.close().catch(() => {});
-    this.page = null; this.context = null; this.browser = null;
-    emit("status", "Arrêté", { status: "Arrêté", lastAction: runtime.lastAction });
-    emit("log", "Moteur arrêté");
+    if (this.stopping) return;
+    this.stopping = true;
+    try {
+      runtime.running = false; runtime.paused = false;
+      runtime.lastAction = "Arrêté"; runtime.step = "stopped";
+      if (this.loopTimer) clearInterval(this.loopTimer);
+      this.loopTimer = null;
+      if (this.page)    await this.page.close().catch(() => {});
+      if (this.context) await this.context.close().catch(() => {});
+      if (this.browser) await this.browser.close().catch(() => {});
+      this.page = null; this.context = null; this.browser = null;
+      emit("status", "Arrêté", { status: "Arrêté", lastAction: runtime.lastAction });
+      emit("log", "Moteur arrêté");
+    } finally {
+      this.stopping = false;
+    }
   }
 
   async trySubmitByClick() {

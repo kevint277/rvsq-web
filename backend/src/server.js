@@ -9,6 +9,7 @@ app.use(cors());
 app.use(express.json());
 
 const engine = new BrowserEngine();
+let startInFlight = false;
 
 function statusText() {
   if (runtime.running && runtime.paused) return "En pause";
@@ -54,31 +55,54 @@ app.post("/profiles/save", (req, res) => {
 });
 
 app.post("/start", async (req, res) => {
-  try {
-    const profile = req.body?.profile || {};
-    const id = saveProfile(profile);
-    await engine.start(profile);
-    runtime.profileId = id;
-    res.json({
-      status: "Démarré",
-      note: "Moteur navigateur V3 lancé. Une validation réelle des sélecteurs reste nécessaire.",
-      state: runtime
-    });
-  } catch (err) {
-    addHistory("error", `Échec du démarrage: ${err.message}`);
-    broadcast({ kind: "error", message: `Échec du démarrage: ${err.message}` });
-    res.status(500).json({ status: "Erreur", error: err.message });
+  const profile = req.body?.profile || {};
+  const id = saveProfile(profile);
+  runtime.profileId = id;
+
+  if (startInFlight || (runtime.running && !runtime.paused)) {
+    return res.status(409).json({ status: "Déjà en cours", state: runtime });
   }
+
+  startInFlight = true;
+  res.json({
+    status: "Démarrage en cours",
+    note: "Le moteur démarre en arrière-plan serveur. Suivre le journal pour l'avancement.",
+    state: runtime
+  });
+
+  Promise.resolve()
+    .then(async () => {
+      try {
+        await engine.start(profile);
+      } catch (err) {
+        addHistory("error", `Échec du démarrage: ${err.message}`);
+        broadcast({ kind: "error", message: `Échec du démarrage: ${err.message}` });
+        runtime.running = false;
+        runtime.paused = false;
+        runtime.lastAction = "Erreur";
+        broadcast({ kind: "status", status: statusText(), lastAction: runtime.lastAction });
+      } finally {
+        startInFlight = false;
+      }
+    });
 });
 
 app.post("/pause", async (req, res) => {
-  await engine.pause();
-  res.json({ status: "En pause", state: runtime });
+  try {
+    await engine.pause();
+    res.json({ status: "En pause", state: runtime });
+  } catch (err) {
+    res.status(409).json({ status: "Erreur", error: err.message, state: runtime });
+  }
 });
 
 app.post("/resume", async (req, res) => {
-  await engine.resume();
-  res.json({ status: "Repris", state: runtime });
+  try {
+    await engine.resume();
+    res.json({ status: "Repris", state: runtime });
+  } catch (err) {
+    res.status(409).json({ status: "Erreur", error: err.message, state: runtime });
+  }
 });
 
 app.post("/stop", async (req, res) => {
