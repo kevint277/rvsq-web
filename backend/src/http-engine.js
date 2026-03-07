@@ -1,24 +1,23 @@
 /**
- * http-engine.js  –  Feature #13  (basé sur analyse HAR réelle)
+ * http-engine.js  –  Feature #13  (v4.2 — context.request, même TLS que CF)
  *
- * Flux réel RVSQ (confirmé par HAR) :
- *   1. GET  Principale.aspx           → parse __VIEWSTATE, __EVENTVALIDATION, RDVSCSRFToken, et, gpStart
- *   2. POST Principale.aspx           → auth patient → 302 → Recherche.aspx
- *   3. GET  /api2/activelinkedconsultationReasons → trouver l'UUID de la raison choisie
- *   4. Boucle : GET /api2/assure/getClinics/Type/{1,2,3}/...  → parse Cascade*Locations
+ * Correction v4.2 : utilise context.request de Playwright au lieu de undici.
+ * Raison : cf_clearance est lié à l'empreinte TLS Chrome. Passer à undici
+ * change le TLS fingerprint → Cloudflare retourne 403 immédiatement.
+ * context.request garde le même TLS, les mêmes cookies, la même session.
  *
- * IMPORTANT (découvert dans HAR) :
- *   - Les champs honeypot (ctlhp0$fullName, ctlhp2$name, etc.) doivent être VIDES
- *   - La recherche est 100% REST API (pas de form POST sur Recherche.aspx)
- *   - Le consultingReasonUid est un UUID dynamique à fetcher
+ * Flux (confirmé par analyse HAR) :
+ *   1. CF Solver → browser context ouvert (même TLS)
+ *   2. GET  Principale.aspx via context.request → parse ViewState + champs
+ *   3. POST Principale.aspx → 302 → Recherche.aspx
+ *   4. GET  /api2/activelinkedconsultationReasons → UUID raison
+ *   5. Boucle : GET /api2/assure/getClinics/Type/{1,2,3} → parse résultats
  */
 
 import { runtime, addHistory, addSession, addFound } from "./store.js";
 import { broadcast } from "./events.js";
 import { siteConfig } from "./site-config.js";
-import { solveCf } from "./cf-solver.js";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
+import { solveCf, USER_AGENT } from "./cf-solver.js";
 
 function emit(kind, message, extra = {}) {
   if (kind === "log") addHistory(extra.type || "info", message, extra);
@@ -30,16 +29,6 @@ function birthParts(iso) {
   return { year: year || "", month: month || "", day: day || "" };
 }
 
-/** Parse la valeur d'un champ hidden dans le HTML */
-function extractField(html, name) {
-  const esc = name.replace(/[$]/g, "\\$");
-  const re = new RegExp(`name=["']${esc}["'][^>]*value=["']([^"']*?)["']`, "i");
-  const m = re.exec(html) ||
-    new RegExp(`value=["']([^"']*?)["'][^>]*name=["']${esc}["']`, "i").exec(html);
-  return m ? m[1] : "";
-}
-
-/** Parse tous les inputs hidden du HTML */
 function extractHiddenFields(html) {
   const fields = {};
   const re = /<input([^>]*)>/gi;
@@ -50,107 +39,78 @@ function extractHiddenFields(html) {
     const nameM  = /name=["']([^"']+)["']/i.exec(attrs);
     const valueM = /value=["']([^"']*?)["']/i.exec(attrs);
     if (!nameM) continue;
-    const type = typeM?.[1].toLowerCase() || "text";
-    if (type === "hidden") {
+    if ((typeM?.[1] || "").toLowerCase() === "hidden") {
       fields[nameM[1]] = valueM ? valueM[1] : "";
     }
   }
   return fields;
 }
 
-/** Formate une date pour l'URL getClinics : 2026-03-06T14_30_00.000Z */
+function extractField(html, name) {
+  const esc = name.replace(/[$]/g, "\\$");
+  const re1 = new RegExp(`name=["']${esc}["'][^>]*value=["']([^"']*?)["']`, "i");
+  const re2 = new RegExp(`value=["']([^"']*?)["'][^>]*name=["']${esc}["']`, "i");
+  return (re1.exec(html) || re2.exec(html))?.[1] ?? "";
+}
+
 function formatDateForUrl(date) {
   return date.toISOString().replace(/:/g, "_");
 }
 
-/** Construit le cookie header depuis un Map */
-function buildCookieHeader(cookieMap) {
-  return Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join("; ");
-}
+// ── PlRequestSession ─────────────────────────────────────────────────────────
+// Wrapper autour de context.request de Playwright
+// Utilise la même session TLS que le browser qui a obtenu cf_clearance
 
-/** Met à jour les cookies depuis les headers Set-Cookie */
-function updateCookies(cookieMap, headers) {
-  const setCookie = headers.get?.("set-cookie") || "";
-  const lines = Array.isArray(setCookie) ? setCookie : [setCookie];
-  for (const line of lines) {
-    const m = /^([^=]+)=([^;]*)/.exec(line);
-    if (m) cookieMap[m[1].trim()] = m[2].trim();
-  }
-  // undici retourne parfois un tableau via getSetCookie()
-  if (headers.getSetCookie) {
-    for (const line of headers.getSetCookie()) {
-      const m = /^([^=]+)=([^;]*)/.exec(line);
-      if (m) cookieMap[m[1].trim()] = m[2].trim();
-    }
-  }
-}
-
-// ── HttpSession ──────────────────────────────────────────────────────────────
-
-class HttpSession {
-  constructor(cookieMap, userAgent) {
-    this.cookieMap = { ...cookieMap };
-    this.userAgent = userAgent;
+class PlRequestSession {
+  constructor(context) {
+    this.req = context.request; // APIRequestContext de Playwright
   }
 
   _headers(extra = {}) {
     return {
-      "User-Agent": this.userAgent,
+      "User-Agent": USER_AGENT,
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
       "Accept-Language": "fr-CA,fr;q=0.9,en-CA;q=0.8,en;q=0.7",
-      "Accept-Encoding": "gzip, deflate, br",
       "Connection": "keep-alive",
-      "Cookie": buildCookieHeader(this.cookieMap),
+      "Upgrade-Insecure-Requests": "1",
       ...extra,
     };
   }
 
   async get(url, extraHeaders = {}) {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: this._headers(extraHeaders),
-      redirect: "follow",
-    });
-    updateCookies(this.cookieMap, res.headers);
-    const text = await res.text();
-    return { status: res.status, url: res.url, html: text };
+    const res = await this.req.get(url, { headers: this._headers(extraHeaders) });
+    const html = await res.text();
+    return { status: res.status(), url, html };
   }
 
   async getJson(url, referer) {
-    const res = await fetch(url, {
-      method: "GET",
+    const res = await this.req.get(url, {
       headers: this._headers({
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "X-Requested-With": "XMLHttpRequest",
         "Referer": referer || siteConfig.rechercheUrl,
         "content-type": "application/json; charset=utf-8",
       }),
-      redirect: "follow",
     });
-    updateCookies(this.cookieMap, res.headers);
     const text = await res.text();
-    try { return { status: res.status, data: JSON.parse(text) }; }
-    catch { return { status: res.status, data: null, raw: text }; }
+    try { return { status: res.status(), data: JSON.parse(text) }; }
+    catch { return { status: res.status(), data: null, raw: text?.slice(0, 200) }; }
   }
 
   async post(url, formData, referer) {
-    const body = new URLSearchParams(formData).toString();
-    const res = await fetch(url, {
-      method: "POST",
+    const res = await this.req.post(url, {
       headers: this._headers({
         "Content-Type": "application/x-www-form-urlencoded",
         "Referer": referer || siteConfig.homeUrl,
         "Origin": "https://www.rvsq.gouv.qc.ca",
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
-        "Upgrade-Insecure-Requests": "1",
       }),
-      body,
-      redirect: "manual", // On gère manuellement la 302
+      form: formData,
     });
-    updateCookies(this.cookieMap, res.headers);
-    const location = res.headers.get("location") || "";
-    return { status: res.status, location, url: res.url };
+    const text = await res.text();
+    // Playwright suit les redirections automatiquement — on détecte Recherche.aspx dans l'URL finale
+    return { status: res.status(), url: res.url(), html: text };
   }
 }
 
@@ -159,23 +119,24 @@ class HttpSession {
 export class HttpEngine {
   constructor() {
     this.session    = null;
+    this.browser    = null;
     this.loopTimer  = null;
     this.profile    = null;
-    this.reasonUid  = null;   // UUID de la raison de consultation
-    this.searchBase = {};     // Paramètres fixes pour getClinics
+    this.reasonUid  = null;
+    this.searchBase = {};
   }
 
   async start(profile) {
     this.profile = profile;
-    runtime.running   = true;
-    runtime.paused    = false;
-    runtime.startedAt = new Date().toISOString();
+    runtime.running    = true;
+    runtime.paused     = false;
+    runtime.startedAt  = new Date().toISOString();
     runtime.lastAction = "Démarré";
     runtime.step = "launch";
     emit("status", "En cours", { status: "En cours", lastAction: runtime.lastAction });
     addSession({ startedAt: runtime.startedAt, profileId: profile?.nam || "" });
 
-    // ── 1. CF Solver ─────────────────────────────────────────────────────────
+    // 1. CF Solver — retourne browser + context OUVERTS
     emit("log", "Étape 1/3 — Obtention du token Cloudflare...");
     let cfResult;
     try {
@@ -183,21 +144,21 @@ export class HttpEngine {
     } catch (err) {
       emit("error", `CF Solver échoué: ${err.message}`); await this.stop(); return;
     }
-    this.session = new HttpSession(cfResult.cookieMap, cfResult.userAgent);
+    this.browser = cfResult.browser;
+    // context.request utilise le même TLS Chrome → pas de 403
+    this.session = new PlRequestSession(cfResult.context);
 
-    // ── 2. Authentification ───────────────────────────────────────────────────
+    // 2. Auth
     const loginOk = await this.login(profile);
     if (!loginOk) return;
 
-    // ── 3. Raisons de consultation + préparation boucle ───────────────────────
+    // 3. Raisons
     const prepOk = await this.prepareSearch(profile);
     if (!prepOk) return;
 
-    // ── 4. Boucle ─────────────────────────────────────────────────────────────
+    // 4. Boucle
     this.startLoop(profile);
   }
-
-  // ── Authentification ────────────────────────────────────────────────────────
 
   async login(profile) {
     runtime.step = "auth";
@@ -209,70 +170,56 @@ export class HttpEngine {
       emit("error", `GET Principale.aspx: ${e.message}`); return {};
     });
     if (!html) return false;
+
     emit("log", `GET Principale.aspx → HTTP ${status}`);
 
     if (status === 403 || status === 503) {
-      emit("error", `HTTP ${status} — Cloudflare bloque encore. Réessaie dans quelques minutes.`);
+      emit("error", `HTTP ${status} — CF bloque les requêtes HTTP même avec le cookie. L'IP Render est probablement sur liste noire.`);
       await this.stop(); return false;
     }
 
-    // Parse les champs dynamiques de la page
-    const hidden = extractHiddenFields(html);
-    const viewState      = hidden["__VIEWSTATE"]       || "";
-    const eventVal       = hidden["__EVENTVALIDATION"] || "";
-    const vsGenerator    = hidden["__VIEWSTATEGENERATOR"] || "";
-    const csrfToken      = extractField(html, "RDVSCSRFToken") || hidden["RDVSCSRFToken"] || "";
-    const etValue        = extractField(html, "ctl00$ContentPlaceHolderMP$et") || "";
-    const gpStartValue   = extractField(html, "ctl00$ContentPlaceHolderMP$gpStart") || "";
-    const rdvsPageInfo   = hidden["RDVSPageInfo"] || "";
-    const rdvsDataSvc    = hidden["RDVSDataServices"] || '{"dataApiUrl":"/api2/"}';
+    const hidden      = extractHiddenFields(html);
+    const csrfToken   = extractField(html, "RDVSCSRFToken")  || hidden["RDVSCSRFToken"] || "";
+    const etValue     = extractField(html, "ctl00$ContentPlaceHolderMP$et") || "";
+    const gpStartVal  = extractField(html, "ctl00$ContentPlaceHolderMP$gpStart") || "";
+    const rdvsPageInfo = hidden["RDVSPageInfo"] || "";
+    const rdvsDataSvc  = hidden["RDVSDataServices"] || '{ "dataApiUrl":"/api2/" }';
 
-    // Cherche le __EVENTTARGET réel du bouton submit
-    // Dans le HAR c'est littéralement "<%= myButton.ClientID %>" mais on cherche l'ID réel dans le HTML
-    const btnM = /id=["']([^"']*(?:btnContinue|btnNext|btnSubmit|Confirm|submit|SubmitButton)[^"']*)["']/i.exec(html);
-    const eventTarget = btnM ? btnM[1] : "";
+    // __EVENTTARGET : cherche l'ID réel du bouton submit dans le HTML
+    const btnM = /id=["']([^"']*(?:btnContinue|btnNext|btnSubmit|Confirm|submit|SubmitButton|btn)[^"']*)["']/i.exec(html);
+    const eventTarget = btnM?.[1] || "";
 
-    emit("log", `CSRF: ${csrfToken ? csrfToken.slice(0,12)+"..." : "absent"} | VS: ${viewState ? "✓" : "absent"} | et: ${etValue} | gpStart: ${gpStartValue}`);
+    emit("log", `CSRF: ${csrfToken ? csrfToken.slice(0,12)+"..." : "absent"} | VS: ${hidden["__VIEWSTATE"] ? "✓" : "absent"} | et: ${etValue}`);
 
     const { day, month, year } = birthParts(profile.birthDate);
 
-    // ── Payload exact tel que capturé dans le HAR ──────────────────────────────
-    // CRITIQUE: les champs honeypot (ctlhp*) doivent être VIDES
     const payload = {
-      // Champs de tracking (injectés par le JS de la page)
-      "RDVSUserId":                                        "0",
-      "RDVSPageInfo":                                      rdvsPageInfo,
-      "RDVSDataServices":                                  rdvsDataSvc,
-      "EnableUserTracking":                                "0",
-      "RDVSCSRFToken":                                     csrfToken,
-
-      // ASP.NET WebForms
-      "__EVENTTARGET":                                     eventTarget,
-      "__EVENTARGUMENT":                                   "",
-      "__VIEWSTATE":                                       viewState,
-      "__VIEWSTATEGENERATOR":                              vsGenerator,
-      "__EVENTVALIDATION":                                 eventVal,
-
-      // Champs patient
-      "ctl00$ContentPlaceHolderMP$AssureForm_FirstName":   profile.firstName  || "",
-      "ctl00$ContentPlaceHolderMP$AssureForm_LastName":    profile.lastName   || "",
-      "ctl00$ContentPlaceHolderMP$AssureForm_NAM":         (profile.nam || "").replace(/\s/g, ""),
-      "ctl00$ContentPlaceHolderMP$AssureForm_CardSeqNumber": profile.seq      || "",
-      "ctl00$ContentPlaceHolderMP$AssureForm_Email":       "",
-      "ctl00$ContentPlaceHolderMP$AssureForm_Phone":       "",
-      "ctl00$ContentPlaceHolderMP$AssureForm_Day":         day,
-      "AssureForm_Month_hidden":                           "",
-      "ctl00$ContentPlaceHolderMP$AssureForm_Month":       month,
-      "ctl00$ContentPlaceHolderMP$AssureForm_Year":        year,
-
-      // Champs de config (valeurs dynamiques extraites du HTML)
-      "ctl00$ContentPlaceHolderMP$NamObligatoire":         "1",
-      "ctl00$ContentPlaceHolderMP$EmailObligatoire":       "0",
-      "ctl00$ContentPlaceHolderMP$PhoneObligatoire":       "0",
-      "ctl00$ContentPlaceHolderMP$et":                     etValue,
-      "ctl00$ContentPlaceHolderMP$gpStart":                gpStartValue,
-
-      // Honeypot — DOIT rester vide (détection bot)
+      "RDVSUserId":                                          "0",
+      "RDVSPageInfo":                                        rdvsPageInfo,
+      "RDVSDataServices":                                    rdvsDataSvc,
+      "EnableUserTracking":                                  "0",
+      "RDVSCSRFToken":                                       csrfToken,
+      "__EVENTTARGET":                                       eventTarget,
+      "__EVENTARGUMENT":                                     "",
+      "__VIEWSTATE":                                         hidden["__VIEWSTATE"]          || "",
+      "__VIEWSTATEGENERATOR":                                hidden["__VIEWSTATEGENERATOR"] || "",
+      "__EVENTVALIDATION":                                   hidden["__EVENTVALIDATION"]    || "",
+      "ctl00$ContentPlaceHolderMP$AssureForm_FirstName":     profile.firstName  || "",
+      "ctl00$ContentPlaceHolderMP$AssureForm_LastName":      profile.lastName   || "",
+      "ctl00$ContentPlaceHolderMP$AssureForm_NAM":           (profile.nam || "").replace(/\s/g, ""),
+      "ctl00$ContentPlaceHolderMP$AssureForm_CardSeqNumber": profile.seq        || "",
+      "ctl00$ContentPlaceHolderMP$AssureForm_Email":         "",
+      "ctl00$ContentPlaceHolderMP$AssureForm_Phone":         "",
+      "ctl00$ContentPlaceHolderMP$AssureForm_Day":           day,
+      "AssureForm_Month_hidden":                             "",
+      "ctl00$ContentPlaceHolderMP$AssureForm_Month":         month,
+      "ctl00$ContentPlaceHolderMP$AssureForm_Year":          year,
+      "ctl00$ContentPlaceHolderMP$NamObligatoire":           "1",
+      "ctl00$ContentPlaceHolderMP$EmailObligatoire":         "0",
+      "ctl00$ContentPlaceHolderMP$PhoneObligatoire":         "0",
+      "ctl00$ContentPlaceHolderMP$et":                       etValue,
+      "ctl00$ContentPlaceHolderMP$gpStart":                  gpStartVal,
+      // Honeypot — DOIT rester vide
       "ctlhp0$fullName":  "",
       "ctlhp2$name":      "",
       "ctlhp3$nam":       "",
@@ -286,28 +233,20 @@ export class HttpEngine {
     });
     if (!post) return false;
 
-    emit("log", `POST Principale.aspx → HTTP ${post.status} | Location: ${post.location}`);
+    emit("log", `POST Principale.aspx → HTTP ${post.status} | URL finale: ${post.url}`);
 
-    if (post.status === 302 && post.location.includes(siteConfig.rechercheUrlPart)) {
+    if (post.url?.includes(siteConfig.rechercheUrlPart)) {
       emit("log", "Authentification réussie ✓ → Recherche.aspx");
-      runtime.currentUrl = siteConfig.rechercheUrl;
-      // Suit la redirection pour charger Recherche.aspx et récupérer les cookies de session
-      await this.session.get(siteConfig.rechercheUrl, {
-        "Referer": siteConfig.homeUrl
-      }).catch(() => {});
+      runtime.currentUrl = post.url;
       return true;
     }
 
-    if (post.status === 302) {
-      const loc = post.location || "";
-      emit("error", `Redirigé vers ${loc} — vérifier les informations patient ou les sélecteurs.`);
-    } else {
-      emit("error", `Authentification échouée HTTP ${post.status}. Vérifier les champs du formulaire.`);
-    }
+    // Cherche un message d'erreur dans la page
+    const errM = /<[^>]*class=["'][^"']*(?:error|alert|warning)[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/i.exec(post.html || "");
+    const errMsg = errM ? errM[1].replace(/<[^>]+>/g, "").trim() : "";
+    emit("error", `Page de recherche non atteinte.${errMsg ? ` Message RVSQ: "${errMsg}"` : " Vérifier les informations patient."}`);
     return false;
   }
-
-  // ── Préparation de la recherche ─────────────────────────────────────────────
 
   async prepareSearch(profile) {
     runtime.step = "prepare-search";
@@ -322,28 +261,22 @@ export class HttpEngine {
     ).catch(e => { emit("error", `activelinkedconsultationReasons: ${e.message}`); return {}; });
 
     if (!data) {
-      emit("error", "Impossible de charger les raisons de consultation.");
-      return false;
+      emit("error", "Impossible de charger les raisons de consultation."); return false;
     }
 
     const reasons = data.consultationReasons || [];
     emit("log", `${reasons.length} raison(s) chargée(s)`);
 
-    // Mappe les codes du frontend vers les titres FR attendus
     const targetLabel = siteConfig.reasonMap[profile.reasonCode] || siteConfig.reasonMap.urgent;
-
-    // Cherche la raison par titre (ignore les inactives si possible)
     let match = reasons.find(r =>
       !r.IsInactive &&
       (r.title?.fr?.toLowerCase().includes(targetLabel.toLowerCase()) ||
        r.title?.en?.toLowerCase().includes(targetLabel.toLowerCase()))
     ) || reasons.find(r =>
-      r.title?.fr?.toLowerCase().includes(targetLabel.toLowerCase()) ||
-      r.title?.en?.toLowerCase().includes(targetLabel.toLowerCase())
+      r.title?.fr?.toLowerCase().includes(targetLabel.toLowerCase())
     );
 
     if (!match) {
-      // Fallback: prend la première raison active
       match = reasons.find(r => !r.IsInactive) || reasons[0];
       emit("log", `Raison "${targetLabel}" non trouvée, fallback: "${match?.title?.fr}"`, { type: "warn" });
     } else {
@@ -352,23 +285,19 @@ export class HttpEngine {
 
     this.reasonUid = match?.uid || null;
     if (!this.reasonUid) {
-      emit("error", "Aucun UUID de raison trouvé — impossible de rechercher.");
-      return false;
+      emit("error", "Aucun UUID de raison trouvé."); return false;
     }
 
-    // Paramètres fixes pour la boucle getClinics
     this.searchBase = {
-      postalCode:  profile.postalCode || "H0H0H0",
-      radius:      String(profile.perimeterKm || 50),
-      reasonUid:   this.reasonUid,
-      timeSlot:    "morning;afternoon;evening",
+      postalCode: profile.postalCode || "H0H0H0",
+      radius:     String(profile.perimeterKm || 50),
+      reasonUid:  this.reasonUid,
+      timeSlot:   "morning;afternoon;evening",
     };
 
     emit("log", `Prêt: raison="${match.title.fr}" rayon=${this.searchBase.radius}km CP=${this.searchBase.postalCode}`);
     return true;
   }
-
-  // ── Boucle de recherche ─────────────────────────────────────────────────────
 
   startLoop(profile) {
     const intervalMs = Math.max(2, Number(profile.intervalSeconds || 5)) * 1000;
@@ -392,13 +321,9 @@ export class HttpEngine {
     const ts = Date.now();
     const found = [];
 
-    // RVSQ fait 3 appels (Type 1, 2, 3) correspondant à différents types de cliniques
-    // Type 1: sans médecin de famille, 0-25 km
-    // Type 2: avec médecin de famille / GMF, 0-25 km  
-    // Type 3: élargi, 25-radius km
     const searches = [
-      { type: 1, offset: 0,  limit: 25  },
-      { type: 2, offset: 0,  limit: 25  },
+      { type: 1, offset: 0,  limit: 25 },
+      { type: 2, offset: 0,  limit: 25 },
       { type: 3, offset: Math.max(0, Number(radius) - 25), limit: radius },
     ];
 
@@ -408,8 +333,7 @@ export class HttpEngine {
         `/Type/${s.type}` +
         `/StartDate/${startDate}` +
         `/timeSlot/${encodeURIComponent(timeSlot)}` +
-        `/${postalCode}` +
-        `/${s.offset}/${s.limit}` +
+        `/${postalCode}/${s.offset}/${s.limit}` +
         `/${reasonUid}/null/0/regular` +
         `?{"ajaxTimeStamp":${ts}}&_=${ts - 150 - s.type * 50}`;
 
@@ -420,21 +344,18 @@ export class HttpEngine {
       if (!data) continue;
 
       if (status === 403) {
-        emit("log", "Session CF expirée (403) — relance nécessaire", { type: "warn" });
+        emit("log", "Session expirée (403) — renouvellement...", { type: "warn" });
         await this.renewSession(); return;
       }
 
-      // Parse les résultats : Cascade1Locations, Cascade2Locations, Cascade3Locations
       for (const key of ["Cascade1Locations", "Cascade2Locations", "Cascade3Locations"]) {
-        const locations = data[key]?.Locations || [];
-        for (const loc of locations) {
+        for (const loc of data[key]?.Locations || []) {
           const slots = loc.nearestAvailabilitiesTime || [];
           if (slots.length > 0) {
-            const firstSlot = slots[0].AvailabilityTime;
             found.push({
-              clinic:   loc.label || loc.company?.name || "Clinique inconnue",
-              address:  `${loc.address?.streetName || ""}, ${loc.address?.city || ""}`.trim(),
-              slot:     firstSlot,
+              clinic:     loc.label || loc.company?.name || "Clinique",
+              address:    `${loc.address?.streetName || ""}, ${loc.address?.city || ""}`.trim(),
+              slot:       slots[0].AvailabilityTime,
               slotsCount: slots.length,
             });
           }
@@ -456,12 +377,13 @@ export class HttpEngine {
     }
   }
 
-  // Renouvelle le token CF si la session expire
   async renewSession() {
-    emit("log", "Renouvellement de la session CF...", { type: "warn" });
+    emit("log", "Renouvellement de session CF...", { type: "warn" });
     try {
+      if (this.browser) await this.browser.close().catch(() => {});
       const cfResult = await solveCf((msg) => emit("log", msg));
-      this.session = new HttpSession(cfResult.cookieMap, cfResult.userAgent);
+      this.browser = cfResult.browser;
+      this.session = new PlRequestSession(cfResult.context);
       const loginOk = await this.login(this.profile);
       if (loginOk) {
         emit("log", "Session renouvelée ✓");
@@ -472,25 +394,23 @@ export class HttpEngine {
     }
   }
 
-  // ── Contrôles ───────────────────────────────────────────────────────────────
-
   async pause() {
     runtime.paused = true; runtime.lastAction = "En pause";
     emit("status", "En pause", { status: "En pause", lastAction: runtime.lastAction });
     emit("log", "Moteur en pause");
   }
-
   async resume() {
     runtime.running = true; runtime.paused = false; runtime.lastAction = "Repris";
     emit("status", "En cours", { status: "En cours", lastAction: runtime.lastAction });
     emit("log", "Moteur repris");
   }
-
   async stop() {
     runtime.running = false; runtime.paused = false;
     runtime.lastAction = "Arrêté"; runtime.step = "stopped";
     if (this.loopTimer) clearInterval(this.loopTimer);
-    this.loopTimer = null; this.session = null;
+    this.loopTimer = null;
+    if (this.browser) await this.browser.close().catch(() => {});
+    this.browser = null; this.session = null;
     emit("status", "Arrêté", { status: "Arrêté", lastAction: runtime.lastAction });
     emit("log", "Moteur arrêté");
   }

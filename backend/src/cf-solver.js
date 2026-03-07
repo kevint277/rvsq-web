@@ -1,7 +1,13 @@
 /**
  * cf-solver.js
- * Utilise Playwright UNE SEULE FOIS pour obtenir le cookie cf_clearance
- * Retourne { cookies, userAgent } pour être réutilisé dans toutes les requêtes HTTP
+ * Lance Playwright, passe Cloudflare, et retourne le contexte OUVERT.
+ * Le contexte doit être fermé par l'appelant via cfContext.close().
+ *
+ * POURQUOI garder le contexte ouvert :
+ *   cf_clearance est lié à l'empreinte TLS du navigateur Chrome.
+ *   Si on switch vers undici (TLS Node.js), CF détecte le changement et retourne 403.
+ *   En utilisant context.request de Playwright, toutes les requêtes HTTP
+ *   gardent la même empreinte TLS que celle qui a obtenu le cookie.
  */
 import { chromium } from "playwright";
 import { siteConfig } from "./site-config.js";
@@ -24,15 +30,13 @@ const STEALTH_SCRIPT = () => {
   if (!window.chrome.runtime) window.chrome.runtime = {};
 };
 
-const USER_AGENT =
+export const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 /**
- * Lance un navigateur headless, passe Cloudflare, extrait les cookies,
- * ferme le navigateur et retourne les cookies sous forme de string header.
- *
- * @param {Function} onLog  callback(message, type) pour les logs
- * @returns {{ cookieHeader: string, userAgent: string, cookieMap: object }}
+ * Lance un browser headless, passe Cloudflare, et retourne le contexte ouvert.
+ * @param {Function} onLog
+ * @returns {{ browser, context }} — À fermer avec browser.close() quand terminé
  */
 export async function solveCf(onLog = () => {}) {
   onLog("CF Solver: lancement du navigateur pour obtenir cf_clearance...");
@@ -64,9 +68,8 @@ export async function solveCf(onLog = () => {}) {
   try {
     await page.goto(siteConfig.homeUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    // Attente que CF se résolve (max 30s)
+    // Attente résolution CF (max 30s)
     const deadline = Date.now() + 30000;
-    let passed = false;
     while (Date.now() < deadline) {
       const title = await page.title().catch(() => "");
       const url = page.url();
@@ -74,27 +77,24 @@ export async function solveCf(onLog = () => {}) {
         /just a moment|cloudflare|attention required/i.test(title) ||
         url.includes("__cf_chl") ||
         (await page.locator("#challenge-running, #cf-challenge-running").count().catch(() => 0)) > 0;
-
-      if (!isCf) { passed = true; break; }
+      if (!isCf) break;
       onLog("CF Solver: en attente du défi Cloudflare...");
       await page.waitForTimeout(2000);
     }
 
-    if (!passed) throw new Error("Cloudflare n'a pas pu être contourné (timeout 30s)");
+    const cookies = await context.cookies();
+    const hasCf = cookies.some(c => c.name === "cf_clearance");
+    onLog(`CF Solver: succès — ${cookies.length} cookie(s) obtenus (cf_clearance: ${hasCf ? "✓" : "absent"})`);
 
-    // Extraire tous les cookies
-    const rawCookies = await context.cookies();
-    const cookieMap = {};
-    for (const c of rawCookies) cookieMap[c.name] = c.value;
+    await page.close().catch(() => {});
 
-    // Construire le header Cookie pour undici
-    const cookieHeader = rawCookies.map(c => `${c.name}=${c.value}`).join("; ");
+    // Retourne browser + context OUVERTS — les requêtes HTTP utilisent context.request
+    return { browser, context };
 
-    onLog(`CF Solver: succès — ${rawCookies.length} cookie(s) obtenus (cf_clearance: ${cookieMap["cf_clearance"] ? "✓" : "absent"})`);
-    return { cookieHeader, userAgent: USER_AGENT, cookieMap };
-  } finally {
+  } catch (err) {
     await page.close().catch(() => {});
     await context.close().catch(() => {});
     await browser.close().catch(() => {});
+    throw err;
   }
 }
